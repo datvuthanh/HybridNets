@@ -13,5 +13,5 @@ seaborn
 prefetch_generator
 imageio
 scikit-learn
-torch>=1.7.0
-torchvision>=0.8.0
+torch==1.9.0
+torchvision==0.10.0
