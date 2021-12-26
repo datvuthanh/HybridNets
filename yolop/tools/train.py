@@ -1,6 +1,7 @@
 import argparse
 import os, sys
 import math
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
@@ -33,6 +34,23 @@ from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
+
+import numpy as np
+import os
+import time
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch_xla
+import torch_xla.core.xla_model as xm
+import torch_xla.debug.metrics as met
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.utils.utils as xu
+from torchvision import datasets, transforms
+
+import gc
 
 
 def parse_args():
@@ -70,7 +88,17 @@ def parse_args():
     return args
 
 
-def main():
+def _mp_fn(rank, flags):
+    torch.set_default_tensor_type('torch.FloatTensor')
+    a = run()
+
+
+def run():
+    global WRAPPED_MODEL
+    global train_dataset
+    global valid_dataset
+    torch.manual_seed(1)
+
     # set all the configurations
     args = parse_args()
     update_config(cfg, args)
@@ -80,7 +108,7 @@ def main():
     global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1
 
     rank = global_rank
-    #print(rank)
+    # print(rank)
     # TODO: handle distributed training logger
     # set the logger, tb_log_dir means tensorboard logdir
 
@@ -108,26 +136,27 @@ def main():
     # start_time = time.time()
     print("begin to bulid up model...")
     # DP mode
-    device = select_device(logger, batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU* len(cfg.GPUS)) if not cfg.DEBUG \
-        else select_device(logger, 'cpu')
+    # device = select_device(logger, batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU* len(cfg.GPUS)) if not cfg.DEBUG \
+    #     else select_device(logger, 'cpu')
 
     if args.local_rank != -1:
         assert torch.cuda.device_count() > args.local_rank
         torch.cuda.set_device(args.local_rank)
         device = torch.device('cuda', args.local_rank)
         dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend
-    
+
     print("load model to device")
-    model = get_net(cfg).to(device)
+    # model = get_net(cfg).to(device)
+
+    device = xm.xla_device()
+    model = WRAPPED_MODEL.to(device)
     # print("load finished")
-    #model = model.to(device)
+    # model = model.to(device)
     # print("finish build model")
-    
 
     # define loss function (criterion) and optimizer
     criterion = get_loss(cfg, device=device)
     optimizer = get_optimizer(cfg, model)
-
 
     # load checkpoint model
     best_perf = 0.0
@@ -137,7 +166,7 @@ def main():
     Encoder_para_idx = [str(i) for i in range(0, 17)]
     Det_Head_para_idx = [str(i) for i in range(17, 25)]
     Da_Seg_Head_para_idx = [str(i) for i in range(25, 34)]
-    Ll_Seg_Head_para_idx = [str(i) for i in range(34,43)]
+    Ll_Seg_Head_para_idx = [str(i) for i in range(34, 43)]
 
     lf = lambda x: ((1 + math.cos(x * math.pi / cfg.TRAIN.END_EPOCH)) / 2) * \
                    (1 - cfg.TRAIN.LRF) + cfg.TRAIN.LRF  # cosine
@@ -158,11 +187,11 @@ def main():
             optimizer.load_state_dict(checkpoint['optimizer'])
             logger.info("=> loaded checkpoint '{}' (epoch {})".format(
                 cfg.MODEL.PRETRAINED, checkpoint['epoch']))
-            #cfg.NEED_AUTOANCHOR = False     #disable autoanchor
-        
+            # cfg.NEED_AUTOANCHOR = False     #disable autoanchor
+
         if os.path.exists(cfg.MODEL.PRETRAINED_DET):
             logger.info("=> loading model weight in det branch from '{}'".format(cfg.MODEL.PRETRAINED))
-            det_idx_range = [str(i) for i in range(0,25)]
+            det_idx_range = [str(i) for i in range(0, 25)]
             model_dict = model.state_dict()
             checkpoint_file = cfg.MODEL.PRETRAINED_DET
             checkpoint = torch.load(checkpoint_file)
@@ -172,7 +201,7 @@ def main():
             model_dict.update(checkpoint_dict)
             model.load_state_dict(model_dict)
             logger.info("=> loaded det branch checkpoint '{}' ".format(checkpoint_file))
-        
+
         if cfg.AUTO_RESUME and os.path.exists(checkpoint_file):
             logger.info("=> loading checkpoint '{}'".format(checkpoint_file))
             checkpoint = torch.load(checkpoint_file)
@@ -184,10 +213,10 @@ def main():
             optimizer.load_state_dict(checkpoint['optimizer'])
             logger.info("=> loaded checkpoint '{}' (epoch {})".format(
                 checkpoint_file, checkpoint['epoch']))
-            #cfg.NEED_AUTOANCHOR = False     #disable autoanchor
+            # cfg.NEED_AUTOANCHOR = False     #disable autoanchor
         # model = model.to(device)
 
-        if cfg.TRAIN.SEG_ONLY:  #Only train two segmentation branchs
+        if cfg.TRAIN.SEG_ONLY:  # Only train two segmentation branchs
             logger.info('freeze encoder and Det head...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
@@ -195,7 +224,7 @@ def main():
                     print('freezing %s' % k)
                     v.requires_grad = False
 
-        if cfg.TRAIN.DET_ONLY:  #Only train detection branch
+        if cfg.TRAIN.DET_ONLY:  # Only train detection branch
             logger.info('freeze encoder and two Seg heads...')
             # print(model.named_parameters)
             for k, v in model.named_parameters():
@@ -207,12 +236,12 @@ def main():
         if cfg.TRAIN.ENC_SEG_ONLY:  # Only train encoder and two segmentation branchs
             logger.info('freeze Det head...')
             for k, v in model.named_parameters():
-                v.requires_grad = True  # train all layers 
+                v.requires_grad = True  # train all layers
                 if k.split(".")[1] in Det_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
 
-        if cfg.TRAIN.ENC_DET_ONLY or cfg.TRAIN.DET_ONLY:    # Only train encoder and detection branchs
+        if cfg.TRAIN.ENC_DET_ONLY or cfg.TRAIN.DET_ONLY:  # Only train encoder and detection branchs
             logger.info('freeze two Seg heads...')
             for k, v in model.named_parameters():
                 v.requires_grad = True  # train all layers
@@ -220,8 +249,7 @@ def main():
                     print('freezing %s' % k)
                     v.requires_grad = False
 
-
-        if cfg.TRAIN.LANE_ONLY: 
+        if cfg.TRAIN.LANE_ONLY:
             logger.info('freeze encoder and Det head and Da_Seg heads...')
             # print(model.named_parameters)
             for k, v in model.named_parameters():
@@ -238,14 +266,13 @@ def main():
                 if k.split(".")[1] in Encoder_para_idx + Ll_Seg_Head_para_idx + Det_Head_para_idx:
                     print('freezing %s' % k)
                     v.requires_grad = False
-        
-    if rank == -1 and torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model, device_ids=cfg.GPUS)
-        # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
-    # # DDP mode
-    if rank != -1:
-        model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
 
+    # if rank == -1 and torch.cuda.device_count() > 1:
+    #     model = torch.nn.DataParallel(model, device_ids=cfg.GPUS)
+    #     # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
+    # # # DDP mode
+    # if rank != -1:
+    #     model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
 
     # assign model params
     model.gr = 1.0
@@ -254,57 +281,83 @@ def main():
 
     print("begin to load data")
     # Data loading
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+    # normalize = transforms.Normalize(
+    #     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    # )
 
-    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-        cfg=cfg,
-        is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
-    )
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
+    # train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+    #     cfg=cfg,
+    #     is_train=True,
+    #     inputsize=cfg.MODEL.IMAGE_SIZE,
+    #     transform=transforms.Compose([
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ])
+    # )
 
-    train_loader = DataLoaderX(
+    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
+
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
         train_dataset,
-        batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-        shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
-        num_workers=cfg.WORKERS,
+        num_replicas=xm.xrt_world_size(),
+        rank=xm.get_ordinal(),
+        shuffle=True)
+
+    # train_loader = DataLoaderX(
+    #     train_dataset,
+    #     batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+    #     shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
+    #     num_workers=cfg.WORKERS,
+    #     sampler=train_sampler,
+    #     pin_memory=cfg.PIN_MEMORY,
+    #     collate_fn=dataset.AutoDriveDataset.collate_fn
+    # )
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=16,
         sampler=train_sampler,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
-    )
+        num_workers=0,
+        drop_last=True,
+        pin_memory=False,
+        collate_fn=dataset.AutoDriveDataset.collate_fn)
+
     num_batch = len(train_loader)
 
     if rank in [-1, 0]:
-        valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-            cfg=cfg,
-            is_train=False,
-            inputsize=cfg.MODEL.IMAGE_SIZE,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                normalize,
-            ])
-        )
+        # valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        #     cfg=cfg,
+        #     is_train=False,
+        #     inputsize=cfg.MODEL.IMAGE_SIZE,
+        #     transform=transforms.Compose([
+        #         transforms.ToTensor(),
+        #         normalize,
+        #     ])
+        # )
 
-        valid_loader = DataLoaderX(
+        # valid_loader = DataLoaderX(
+        #     valid_dataset,
+        #     batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+        #     shuffle=False,
+        #     num_workers=cfg.WORKERS,
+        #     pin_memory=cfg.PIN_MEMORY,
+        #     collate_fn=dataset.AutoDriveDataset.collate_fn
+        # )
+
+        valid_loader = torch.utils.data.DataLoader(
             valid_dataset,
-            batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+            batch_size=16,
             shuffle=False,
-            num_workers=cfg.WORKERS,
-            pin_memory=cfg.PIN_MEMORY,
-            collate_fn=dataset.AutoDriveDataset.collate_fn
-        )
+            num_workers=0,
+            drop_last=True,
+            collate_fn=dataset.AutoDriveDataset.collate_fn)
         print('load data finished')
-    
+
     if rank in [-1, 0]:
         if cfg.NEED_AUTOANCHOR:
             logger.info("begin check anchors")
-            run_anchor(logger,train_dataset, model=model, thr=cfg.TRAIN.ANCHOR_THRESHOLD, imgsz=min(cfg.MODEL.IMAGE_SIZE))
+            run_anchor(logger, train_dataset, model=model, thr=cfg.TRAIN.ANCHOR_THRESHOLD,
+                       imgsz=min(cfg.MODEL.IMAGE_SIZE))
         else:
             logger.info("anchors loaded successfully")
             det = model.module.model[model.module.detector_index] if is_parallel(model) \
@@ -313,36 +366,49 @@ def main():
 
     # training
     num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
-    scaler = amp.GradScaler(enabled=device.type != 'cpu')
+    # scaler = amp.GradScaler(enabled=device.type != 'cpu')
+    scaler = None
     print('=> start training...')
-    for epoch in range(begin_epoch+1, cfg.TRAIN.END_EPOCH+1):
-        if rank != -1:
-            train_loader.sampler.set_epoch(epoch)
+    gc.collect()
+    for epoch in range(begin_epoch + 1, cfg.TRAIN.END_EPOCH + 1):
+
+        # if rank != -1:
+        #     train_loader.sampler.set_epoch(epoch)
         # train for one epoch
-        train(cfg, train_loader, model, criterion, optimizer, scaler,
+
+        para_loader = pl.ParallelLoader(train_loader, [device])
+
+        train(cfg, para_loader.per_device_loader(device), model, criterion, optimizer, scaler,
               epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
-        
+
         lr_scheduler.step()
+
+        del para_loader
+        gc.collect()
 
         # evaluate on validation set
         if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
-            # print('validate')
-            da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
-                epoch,cfg, valid_loader, valid_dataset, model, criterion,
+            print('validate')
+            para_loader = pl.ParallelLoader(valid_loader, [device])
+            da_segment_results, ll_segment_results, detect_results, total_loss, maps, times = validate(
+                epoch, cfg, para_loader.per_device_loader(device), valid_dataset, model, criterion,
                 final_output_dir, tb_log_dir, writer_dict,
                 logger, device, rank
             )
-            fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
+            del para_loader
+            gc.collect()
+            fi = fitness(np.array(detect_results).reshape(1, -1))  # 目标检测评价指标
 
             msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
-                      'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
-                      'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
-                      'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
-                          epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
-                          p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
-                          t_inf=times[0], t_nms=times[1])
+                  'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+                  'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
+                  'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n' \
+                  'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                epoch, loss=total_loss, da_seg_acc=da_segment_results[0], da_seg_iou=da_segment_results[1],
+                da_seg_miou=da_segment_results[2],
+                ll_seg_acc=ll_segment_results[0], ll_seg_iou=ll_segment_results[1], ll_seg_miou=ll_segment_results[2],
+                p=detect_results[0], r=detect_results[1], map50=detect_results[2], map=detect_results[3],
+                t_inf=times[0], t_nms=times[1])
             logger.info(msg)
 
             # if perf_indicator >= best_perf:
@@ -392,4 +458,27 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    FLAGS = {}
+    WRAPPED_MODEL = xmp.MpModelWrapper(get_net(cfg))
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    )
+    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        cfg=cfg,
+        is_train=True,
+        inputsize=cfg.MODEL.IMAGE_SIZE,
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+    )
+    valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        cfg=cfg,
+        is_train=False,
+        inputsize=cfg.MODEL.IMAGE_SIZE,
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            normalize,
+        ])
+    )
+    xmp.spawn(_mp_fn, args=(FLAGS,), nprocs=8, start_method='fork')
