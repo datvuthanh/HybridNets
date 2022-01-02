@@ -13,7 +13,7 @@ class EfficientDetBackbone(nn.Module):
         self.compound_coef = compound_coef
 
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
-        self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
+        self.fpn_num_filters = [64, 88, 112, 88, 224, 288, 384, 384, 384]
         self.fpn_cell_repeats = [3, 4, 5, 6, 7, 7, 8, 8, 8]
         # self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
         self.input_sizes = [512, 640, 768, 640, 1024, 1280, 1280, 1536, 1536]
