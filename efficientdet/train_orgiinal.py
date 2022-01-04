@@ -21,11 +21,6 @@ from efficientdet.dataset import CocoDataset, Resizer, Normalizer, Augmenter, co
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string
-from efficientdet.bdd import BddDataset
-from efficientdet.AutoDriveDataset import AutoDriveDataset
-from efficientdet.yolop_cfg import update_config
-from efficientdet.yolop_cfg import _C as cfg
-from efficientdet.yolop_utils import DataLoaderX
 
 
 class Params:
@@ -88,8 +83,6 @@ class ModelWithLoss(nn.Module):
 
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
-    update_config(cfg, opt)
-
 
     if params.num_gpus == 0:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -117,63 +110,20 @@ def train(opt):
                   'num_workers': opt.num_workers}
 
     input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
-    # training_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.train_set,
-    #                            transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
-    #                                                          Augmenter(),
-    #                                                          Resizer(input_sizes[opt.compound_coef])]))
-    # training_generator = DataLoader(training_set, **training_params)
-    #
-    # val_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.val_set,
-    #                       transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
-    #                                                     Resizer(input_sizes[opt.compound_coef])]))
-    # val_generator = DataLoader(val_set, **val_params)
+    training_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.train_set,
+                               transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
+                                                             Augmenter(),
+                                                             Resizer(input_sizes[opt.compound_coef])]))
+    training_generator = DataLoader(training_set, **training_params)
 
-    train_dataset = BddDataset(
-        cfg=cfg,
-        is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            )
-        ])
-    )
+    val_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.val_set,
+                          transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
+                                                        Resizer(input_sizes[opt.compound_coef])]))
+    val_generator = DataLoader(val_set, **val_params)
 
-    training_generator = DataLoaderX(
-        train_dataset,
-        batch_size=4,
-        shuffle=True,
-        num_workers=cfg.WORKERS,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=AutoDriveDataset.collate_fn
-    )
-
-    valid_dataset = BddDataset(
-        cfg=cfg,
-        is_train=False,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            )
-        ])
-    )
-
-    val_generator = DataLoaderX(
-        valid_dataset,
-        batch_size=4,
-        shuffle=False,
-        num_workers=cfg.WORKERS,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=AutoDriveDataset.collate_fn
-    )
-
-    # model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-    #                              ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
-    model = EfficientDetBackbone(num_classes=1, compound_coef=opt.compound_coef,
+    model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
+
     # load last weights
     if opt.load_weights is not None:
         if opt.load_weights.endswith('.pth'):
@@ -231,7 +181,6 @@ def train(opt):
     if params.num_gpus > 0:
         model = model.cuda()
         if params.num_gpus > 1:
-            # print("WERWERWERWERWERWER")
             model = CustomDataParallel(model, params.num_gpus)
             if use_sync_bn:
                 patch_replication_callback(model)
@@ -264,19 +213,16 @@ def train(opt):
                     progress_bar.update()
                     continue
                 try:
-
                     imgs = data['img']
                     annot = data['annot']
 
-                    # print(imgs)
-
+                    # print("HREER", imgs)
 
                     if params.num_gpus == 1:
                         # if only one gpu, just send it to cuda:0
                         # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                         imgs = imgs.cuda()
                         annot = annot.cuda()
-
 
                     optimizer.zero_grad()
                     cls_loss, reg_loss = model(imgs, annot, obj_list=params.obj_list)
