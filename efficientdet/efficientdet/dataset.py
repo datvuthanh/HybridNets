@@ -41,6 +41,9 @@ class CocoDataset(Dataset):
 
         img = self.load_image(idx)
         annot = self.load_annotations(idx)
+
+        print(annot)
+
         sample = {'img': img, 'annot': annot}
         if self.transform:
             sample = self.transform(sample)
@@ -84,6 +87,7 @@ class CocoDataset(Dataset):
 
 
 def collater(data):
+
     imgs = [s['img'] for s in data]
     annots = [s['annot'] for s in data]
     scales = [s['scale'] for s in data]
