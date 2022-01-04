@@ -17,6 +17,7 @@ from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
 from backbone import EfficientDetBackbone
+from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
 from efficientdet.dataset import CocoDataset, Resizer, Normalizer, Augmenter, collater
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
@@ -26,7 +27,9 @@ from efficientdet.AutoDriveDataset import AutoDriveDataset
 from efficientdet.yolop_cfg import update_config
 from efficientdet.yolop_cfg import _C as cfg
 from efficientdet.yolop_utils import DataLoaderX
+import segmentation_models_pytorch as smp
 
+import cv2
 
 class Params:
     def __init__(self, project_file):
@@ -73,17 +76,46 @@ class ModelWithLoss(nn.Module):
     def __init__(self, model, debug=False):
         super().__init__()
         self.criterion = FocalLoss()
+        self.seg_criterion = smp.utils.losses.DiceLoss()
         self.model = model
         self.debug = debug
 
-    def forward(self, imgs, annotations, obj_list=None):
-        _, regression, classification, anchors = self.model(imgs)
+    def forward(self, imgs, annotations,road_gt, obj_list=None):
+        _, regression, classification, anchors, segmentation = self.model(imgs)
+
         if self.debug:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
         else:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
-        return cls_loss, reg_loss
+            # Calculate segmentation loss
+
+            seg_loss = self.seg_criterion(segmentation, road_gt)
+
+            # print(segmentation.size())
+
+            da_seg_mask = torch.rand((1, 384, 640))
+
+            # _, da_seg_mask = torch.max(seg,0)
+
+            da_seg_mask = da_seg_mask.squeeze().cpu().numpy()
+
+            da_seg_mask[da_seg_mask < 0.5] = 0
+            print(np.count_nonzero(da_seg_mask))
+
+            color_area = np.zeros((da_seg_mask.shape[0], da_seg_mask.shape[1], 3), dtype=np.uint8)
+
+            # for label, color in enumerate(palette):
+            #     color_area[result[0] == label, :] = color
+
+            color_area[da_seg_mask == 1] = [0, 255, 0]
+
+            color_seg = color_area[..., ::-1]
+
+            cv2.imwrite('seg.jpg', color_seg)
+
+
+        return cls_loss, reg_loss, seg_loss
 
 
 def train(opt):
@@ -172,8 +204,13 @@ def train(opt):
 
     # model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
     #                              ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
+    pretrainedmodels = EfficientDetBackboneOld(num_classes=1, compound_coef=opt.compound_coef,
+                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
+
     model = EfficientDetBackbone(num_classes=1, compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
+
+
     # load last weights
     if opt.load_weights is not None:
         if opt.load_weights.endswith('.pth'):
@@ -186,7 +223,7 @@ def train(opt):
             last_step = 0
 
         try:
-            ret = model.load_state_dict(torch.load(weights_path), strict=False)
+            ret = pretrainedmodels.load_state_dict(torch.load(weights_path), strict=False)
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
             print(
@@ -196,7 +233,27 @@ def train(opt):
     else:
         last_step = 0
         print('[Info] initializing weights...')
-        init_weights(model)
+        init_weights(pretrainedmodels)
+
+    print('[Info] Load a part of weights from pretrained models')
+    params1 = pretrainedmodels.state_dict()
+    params2 = model.state_dict()
+
+    dict_params1 = dict(params1)
+    dict_params2 = dict(params2)
+    #
+    # for name1, param1 in params1:
+    #     if name1 in dict_params2:
+    #         # print("inside",name1)
+    #         dict_params2[name1].data.copy_(param1.data)
+    #
+    # model.load_state_dict(dict_params2)
+
+    pretrained_dict = {k: v for k, v in dict_params1.items() if k in dict_params2}
+    dict_params2.update(pretrained_dict)
+    model.load_state_dict(dict_params2)
+
+    print('[Info] Successfully!!!')
 
     # freeze backbone if train head_only
     if opt.head_only:
@@ -267,6 +324,8 @@ def train(opt):
 
                     imgs = data['img']
                     annot = data['annot']
+                    road_gt = data['road']
+                    print(road_gt.shape)
 
                     # print(imgs)
 
@@ -276,14 +335,16 @@ def train(opt):
                         # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                         imgs = imgs.cuda()
                         annot = annot.cuda()
+                        road_gt = road_gt.cuda()
 
 
                     optimizer.zero_grad()
-                    cls_loss, reg_loss = model(imgs, annot, obj_list=params.obj_list)
+                    cls_loss, reg_loss, seg_loss = model(imgs, annot, road_gt,obj_list=params.obj_list)
                     cls_loss = cls_loss.mean()
                     reg_loss = reg_loss.mean()
+                    seg_loss = seg_loss.mean()
 
-                    loss = cls_loss + reg_loss
+                    loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
                         continue
 
@@ -294,12 +355,14 @@ def train(opt):
                     epoch_loss.append(float(loss))
 
                     progress_bar.set_description(
-                        'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Total loss: {:.5f}'.format(
+                        'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
                             step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
-                            reg_loss.item(), loss.item()))
+                            reg_loss.item(), seg_loss.item(), loss.item()))
                     writer.add_scalars('Loss', {'train': loss}, step)
                     writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
                     writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
+                    writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
+
 
                     # log learning_rate
                     current_lr = optimizer.param_groups[0]['lr']
@@ -321,36 +384,44 @@ def train(opt):
                 model.eval()
                 loss_regression_ls = []
                 loss_classification_ls = []
+                loss_segmentation_ls = []
                 for iter, data in enumerate(val_generator):
                     with torch.no_grad():
                         imgs = data['img']
                         annot = data['annot']
+                        road_gt = data['road']
 
                         if params.num_gpus == 1:
                             imgs = imgs.cuda()
                             annot = annot.cuda()
+                            road_gt = road_gt.cuda()
 
-                        cls_loss, reg_loss = model(imgs, annot, obj_list=params.obj_list)
+                        cls_loss, reg_loss, seg_loss = model(imgs, annot, road_gt, obj_list=params.obj_list)
                         cls_loss = cls_loss.mean()
                         reg_loss = reg_loss.mean()
+                        seg_loss = seg_loss.mean()
 
-                        loss = cls_loss + reg_loss
+                        loss = cls_loss + reg_loss + seg_loss
                         if loss == 0 or not torch.isfinite(loss):
                             continue
 
                         loss_classification_ls.append(cls_loss.item())
                         loss_regression_ls.append(reg_loss.item())
+                        loss_segmentation_ls.append(seg_loss.item())
 
                 cls_loss = np.mean(loss_classification_ls)
                 reg_loss = np.mean(loss_regression_ls)
-                loss = cls_loss + reg_loss
+                seg_loss = np.mean(loss_segmentation_ls)
+                loss = cls_loss + reg_loss + seg_loss
 
                 print(
-                    'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Total loss: {:1.5f}'.format(
-                        epoch, opt.num_epochs, cls_loss, reg_loss, loss))
+                    'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
+                        epoch, opt.num_epochs, cls_loss, reg_loss, seg_loss, loss))
                 writer.add_scalars('Loss', {'val': loss}, step)
                 writer.add_scalars('Regression_loss', {'val': reg_loss}, step)
                 writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
+                writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
+
 
                 if loss + opt.es_min_delta < best_loss:
                     best_loss = loss

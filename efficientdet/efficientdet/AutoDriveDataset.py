@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 from pathlib import Path
 from PIL import Image
 from torch.utils.data import Dataset
-from .yolop_utils import letterbox, augment_hsv, random_perspective, xyxy2xywh, cutout
+from .yolop_utils import letterbox, augment_hsv, random_perspective, xyxy2xywh, cutout, show_seg_result
 
 
 class AutoDriveDataset(Dataset):
@@ -105,9 +105,6 @@ class AutoDriveDataset(Dataset):
         else:
             seg_label = cv2.imread(data["mask"], 0)
         lane_label = cv2.imread(data["lane"], 0)
-
-        cv2.imwrite('seg.jpg', seg_label)
-        cv2.imwrite('lane.jpg', lane_label)
 
         # print(lane_label.shape)
         # print(seg_label.shape)
@@ -246,6 +243,9 @@ class AutoDriveDataset(Dataset):
         # # seg1[cutout_mask] = 0
         # # seg2[cutout_mask] = 0
 
+        # cv2.imwrite('seg1.jpg',seg1)
+        # cv2.imwrite('seg2.jpg',seg2)
+
         # seg_label /= 255
         # seg0 = self.Tensor(seg0)
         if self.cfg.num_seg_class == 3:
@@ -257,20 +257,30 @@ class AutoDriveDataset(Dataset):
         lane1 = self.Tensor(lane1)
         lane2 = self.Tensor(lane2)
 
+        # print(seg1.shape)
+        # print("SEG", seg1)
+        # print("HERE ", lane1)
+
         # seg_label = torch.stack((seg2[0], seg1[0]),0)
         if self.cfg.num_seg_class == 3:
             seg_label = torch.stack((seg0[0], seg1[0], seg2[0]), 0)
         else:
             seg_label = torch.stack((seg2[0], seg1[0]), 0)
 
+        # print("SEG LABEL", seg_label.size())
         lane_label = torch.stack((lane2[0], lane1[0]), 0)
         # _, gt_mask = torch.max(seg_label, 0)
-        # _ = show_seg_result(img, gt_mask, idx, 0, save_dir='debug', is_gt=True)
+
+        # print("GT MASK", gt_mask.size())
+
+        # igg = show_seg_result(img, gt_mask, idx, 0, save_dir='debug', is_gt=True)
+
+        # cv2.imwrite('igg.jpg',igg)
 
         target = [labels_out, seg_label, lane_label]
         img = self.transform(img)
 
-        return img, target, data["image"], shapes, torch.from_numpy(labels_app)
+        return img, target, data["image"], shapes, torch.from_numpy(labels_app), seg1
 
     def select_data(self, db):
         """
@@ -287,7 +297,7 @@ class AutoDriveDataset(Dataset):
 
     @staticmethod
     def collate_fn(batch):
-        img, labelz, paths, shapes, labels_app = zip(*batch)
+        img, labelz, paths, shapes, labels_app, seg1 = zip(*batch)
 
         # print(len(labels_app))
 
@@ -313,5 +323,6 @@ class AutoDriveDataset(Dataset):
         #return torch.stack(img, 0), annot_padded #[torch.cat(label_det, 0), torch.stack(label_seg, 0),
                                      #torch.stack(label_lane, 0)], paths, shapes
 
-        return {'img': torch.stack(img, 0), 'annot': annot_padded}
+        # print("ABC", seg1.size())
+        return {'img': torch.stack(img, 0), 'annot': annot_padded, 'road': torch.stack(seg1, 0)}
 
