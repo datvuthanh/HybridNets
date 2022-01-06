@@ -51,6 +51,8 @@ class FocalLoss(nn.Module):
             bbox_annotation = annotations[j]
             bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]
 
+            # print(bbox_annotation)
+
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
             
             if bbox_annotation.shape[0] == 0:
@@ -85,6 +87,8 @@ class FocalLoss(nn.Module):
                 continue
                 
             IoU = calc_iou(anchor[:, :], bbox_annotation[:, :4])
+
+            # print("IOU", IoU)
 
             IoU_max, IoU_argmax = torch.max(IoU, dim=1)
 

@@ -3,11 +3,8 @@
 import torch
 from torch import nn
 
-from efficientdet.model import BiFPN, Regressor, Classifier, EfficientNet, BiFPNDecoder
+from efficientdet.model import BiFPN, Regressor, Classifier, EfficientNet
 from efficientdet.utils import Anchors
-from encoders import get_encoder
-from efficientdet.initialize import initialize_decoder, initialize_head
-from efficientdet.segmentation_head import Activation, SegmentationHead, ClassificationHead
 
 
 class EfficientDetBackbone(nn.Module):
@@ -19,6 +16,7 @@ class EfficientDetBackbone(nn.Module):
         self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
         self.fpn_cell_repeats = [3, 4, 5, 6, 7, 7, 8, 8, 8]
         self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
+
         self.box_class_repeats = [3, 3, 3, 4, 4, 4, 5, 5, 5]
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
         self.anchor_scale = [4., 4., 4., 4., 4., 4., 4., 5., 4.]
@@ -51,19 +49,6 @@ class EfficientDetBackbone(nn.Module):
         self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
                                    num_layers=self.box_class_repeats[self.compound_coef],
                                    pyramid_levels=self.pyramid_levels[self.compound_coef])
-
-        '''Modified by Dat Vu'''
-        # self.decoder = DecoderModule()
-        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
-
-        self.segmentation_head = SegmentationHead(
-            in_channels=32,
-            out_channels=1,
-            activation='sigmoid',
-            kernel_size=1,
-            upsampling=8,
-        )
-
         self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
                                      num_classes=num_classes,
                                      num_layers=self.box_class_repeats[self.compound_coef],
@@ -75,17 +60,6 @@ class EfficientDetBackbone(nn.Module):
 
         self.backbone_net = EfficientNet(self.backbone_compound_coef[compound_coef], load_weights)
 
-        self.encoder = get_encoder(
-            'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
-            in_channels=3,
-            depth=5,
-            weights='imagenet',
-        )
-
-        initialize_decoder(self.bifpn)
-        initialize_decoder(self.bifpndecoder)
-        initialize_head(self.segmentation_head)
-
     def freeze_bn(self):
         for m in self.modules():
             if isinstance(m, nn.BatchNorm2d):
@@ -94,22 +68,16 @@ class EfficientDetBackbone(nn.Module):
     def forward(self, inputs):
         max_size = inputs.shape[-1]
 
-        # p1, p2, p3, p4, p5 = self.backbone_net(inputs)
-        p2, p3, p4, p5 = self.encoder(inputs)[-4:]  # self.backbone_net(inputs)
+        p1, p2 , p3, p4, p5 = self.backbone_net(inputs)
 
         features = (p3, p4, p5)
-
         features = self.bifpn(features)
-
-        outputs = self.bifpndecoder(features)
-
-        segmentation = self.segmentation_head(outputs)
 
         regression = self.regressor(features)
         classification = self.classifier(features)
         anchors = self.anchors(inputs, inputs.dtype)
 
-        return features, regression, classification, anchors, segmentation
+        return features, regression, classification, anchors
 
     def init_backbone(self, path):
         state_dict = torch.load(path)
