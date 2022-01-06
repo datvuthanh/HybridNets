@@ -5,6 +5,7 @@ from torchvision.ops.boxes import nms as nms_torch
 from efficientnet import EfficientNet as EffNet
 from efficientnet.utils import MemoryEfficientSwish, Swish
 from efficientnet.utils_extra import Conv2dStaticSamePadding, MaxPool2dStaticSamePadding
+import torch.nn.functional as F
 
 
 def nms(dets, thresh):
@@ -213,7 +214,6 @@ class BiFPN(nn.Module):
         weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
         # Connections for P6_0 and P7_0 to P6_1 respectively
         p6_up = self.conv6_up(self.swish(weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
-
         # Weights for P5_0 and P6_1 to P5_1
         p5_w1 = self.p5_w1_relu(self.p5_w1)
         weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
@@ -377,6 +377,162 @@ class Regressor(nn.Module):
         return feats
 
 
+class Conv3x3BNSwish(nn.Module):
+    def __init__(self, in_channels, out_channels, upsample=False):
+        super().__init__()
+
+        self.swish = Swish()
+
+        self.upsample = upsample
+
+        self.block = nn.Sequential(
+            Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=(3, 3), stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
+        )
+
+        self.conv_sp = SeparableConvBlock(out_channels, onnx_export=False)
+
+        # self.block = nn.Sequential(
+        #     nn.Conv2d(
+        #         in_channels, out_channels, (3, 3), stride=1, padding=1, bias=False
+        #     ),
+        #     nn.GroupNorm(32, out_channels),
+        #     nn.ReLU(inplace=True),
+        # )
+
+    def forward(self, x):
+        x = self.conv_sp(self.swish(self.block(x)))
+        if self.upsample:
+            x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
+        return x
+
+
+class SegmentationBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, n_upsamples=0):
+        super().__init__()
+
+        blocks = [Conv3x3BNSwish(in_channels, out_channels, upsample=bool(n_upsamples))]
+
+        if n_upsamples > 1:
+            for _ in range(1, n_upsamples):
+                blocks.append(Conv3x3BNSwish(out_channels, out_channels, upsample=True))
+
+        self.block = nn.Sequential(*blocks)
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class MergeBlock(nn.Module):
+    def __init__(self, policy):
+        super().__init__()
+        if policy not in ["add", "cat"]:
+            raise ValueError(
+                "`merge_policy` must be one of: ['add', 'cat'], got {}".format(
+                    policy
+                )
+            )
+        self.policy = policy
+
+    def forward(self, x):
+        if self.policy == 'add':
+            return sum(x)
+        elif self.policy == 'cat':
+            return torch.cat(x, dim=1)
+        else:
+            raise ValueError(
+                "`merge_policy` must be one of: ['add', 'cat'], got {}".format(self.policy)
+            )
+
+
+class BiFPNDecoder(nn.Module):
+    def __init__(
+            self,
+            encoder_depth=5,
+            pyramid_channels=64,
+            segmentation_channels=32,
+            output_channels=32,
+            dropout=0.2,
+            merge_policy="add", ):
+        super().__init__()
+
+        self.seg_blocks = nn.ModuleList([
+            SegmentationBlock(pyramid_channels, segmentation_channels, n_upsamples=n_upsamples)
+            for n_upsamples in [4, 3, 2, 1, 0]
+        ])
+
+        # self.swish = Swish()
+
+        # self.block = nn.Sequential(
+        #           Conv2dStaticSamePadding(segmentation_channels, output_channels, kernel_size = (3,3), stride=1, padding=1, bias=False),
+        #           nn.BatchNorm2d(output_channels, momentum=0.01, eps=1e-3),
+        #       )
+
+        # self.conv_sp = SeparableConvBlock(segmentation_channels, onnx_export=False)
+
+        self.merge = MergeBlock(merge_policy)
+
+        self.dropout = nn.Dropout2d(p=dropout, inplace=True)
+
+    def forward(self, inputs):
+        p3, p4, p5, p6, p7 = inputs
+
+        feature_pyramid = [seg_block(p) for seg_block, p in zip(self.seg_blocks, [p7, p6, p5, p4, p3])]
+
+        x = self.merge(feature_pyramid)
+
+        # x = self.swish(self.block(x))
+
+        x = self.dropout(x)
+
+        return x
+
+
+# # Dat Vu add
+# class DecoderModule(nn.Module):
+#   """
+#   modified by datvuthanh
+#   """
+#   def __init__(self,num_channels=64,onnx_export=False):
+#     super(DecoderModule, self).__init__()
+#     self.p3_upsample = nn.Upsample(scale_factor=1, mode='nearest')
+#     self.p4_upsample = nn.Upsample(scale_factor=2, mode='nearest')
+#     self.p5_upsample = nn.Upsample(scale_factor=4, mode='nearest')
+#     self.p6_upsample = nn.Upsample(scale_factor=8, mode='nearest')
+#     self.p7_upsample = nn.Upsample(scale_factor=16, mode='nearest')
+
+#     self.conv7_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+#     self.conv6_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+#     self.conv5_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+#     self.conv4_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+#     self.conv3_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+
+#     self.classification = nn.Conv2d(in_channels=320, out_channels = 21, kernel_size = 1, stride = 1, padding = 0)
+
+#   def forward(self, inputs):
+#     feats = []
+#     p3,p4,p5,p6,p7 = inputs
+
+#     p3_up = self.conv3_up(self.p3_upsample(p3))
+#     p4_up = self.conv4_up(self.p4_upsample(p4))
+#     p5_up = self.conv5_up(self.p5_upsample(p5))
+#     p6_up = self.conv6_up(self.p6_upsample(p6))
+#     p7_up = self.conv7_up(self.p7_upsample(p7))
+
+#     feats.append(p3_up)
+#     feats.append(p4_up)
+#     feats.append(p5_up)
+#     feats.append(p6_up)
+#     feats.append(p7_up)
+
+#     feats = torch.cat(feats, dim=1)
+
+#     out = self.classification(feats)
+
+#     out = F.interpolate(out, size=(640, 640), mode='bilinear', align_corners=True)
+
+#     return out
+
 class Classifier(nn.Module):
     """
     modified by Zylo117
@@ -454,7 +610,7 @@ class EfficientNet(nn.Module):
                 feature_maps.append(x)
             last_x = x
         del last_x
-        return feature_maps[1:]
+        return feature_maps  # [1:]
 
 
 if __name__ == '__main__':
