@@ -1,0 +1,6 @@
+*.pyc
+*.jpg
+*.json
+*.png
+*.pth
+events.out.tfevents.*
