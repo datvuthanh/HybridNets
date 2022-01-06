@@ -17,7 +17,7 @@ from utils.utils import preprocess, invert_affine, postprocess, STANDARD_COLORS,
 
 compound_coef = 1
 force_input_size = None  # set None to use default size
-img_path = 'datasets/bdd100k_effdet/val/b1d4b62c-d9805029.jpg'
+img_path = 'datasets/bdd100k_effdet/val/b1d0a191-5490450b.jpg'
 
 # replace this part with your project's anchor config
 anchor_ratios = [(0.7, 1.4), (1.0, 1.0), (1.3, 0.8)]
@@ -75,12 +75,12 @@ with torch.no_grad():
     # print(ori_imgs)
     # ori_img = np.asarray(ori_imgs)
     # print(ori_img.size())
-    ratio = 640 / 1280
-    da_predict = seg[:, :, 0:(720 - 0), 0:(1280 - 0)]
+    # ratio = 640 / 1280
+    # da_predict = seg[:, :, 0:(720 - 0), 0:(1280 - 0)]
 
-    print(da_predict.shape)
-    da_seg_mask = torch.nn.functional.interpolate(da_predict, scale_factor=int(1 / ratio), mode='bilinear')
-    print(da_seg_mask.shape)
+    # print(da_predict.shape)
+    da_seg_mask = torch.nn.functional.interpolate(seg, size = [720,1280], mode='bilinear')
+    # print(da_seg_mask.shape)
     # _, da_seg_mask = torch.max(seg, 1)
 
     # seg = torch.rand((1, 384, 640))
@@ -106,7 +106,7 @@ with torch.no_grad():
     # # print(color_seg.shape)
     color_mask = np.mean(color_seg, 2)
     # print(ori_img.shape)
-    ori_img = cv2.resize(ori_img, (1280, 768), interpolation=cv2.INTER_LINEAR)
+    # ori_img = cv2.resize(ori_img, (1280, 768), interpolation=cv2.INTER_LINEAR)
     ori_img[color_mask != 0] = ori_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
     # img = img * 0.5 + color_seg * 0.5
     ori_img = ori_img.astype(np.uint8)
@@ -116,6 +116,8 @@ with torch.no_grad():
 
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
+
+    # print(x.shape)
 
     out = postprocess(x,
                       anchors, regression, classification,
@@ -138,9 +140,9 @@ def display(preds, imgs, imshow=True, imwrite=False):
             score = float(preds[i]['scores'][j])
             plot_one_box(imgs[i], [x1, y1, x2, y2], label=obj,score=score,color=color_list[get_index_label(obj, obj_list)])
 
-        imgs[i] = cv2.resize(imgs[i], (1280, 768), interpolation=cv2.INTER_LINEAR)
+        # imgs[i] = cv2.resize(imgs[i], (1280, 768), interpolation=cv2.INTER_LINEAR)
         imgs[i][color_mask != 0] = imgs[i][color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
-        imgs[i] = cv2.resize(imgs[i], (1280, 720), interpolation=cv2.INTER_LINEAR)
+        # imgs[i] = cv2.resize(imgs[i], (1280, 720), interpolation=cv2.INTER_LINEAR)
 
         if imshow:
             cv2.imshow('img', imgs[i])
