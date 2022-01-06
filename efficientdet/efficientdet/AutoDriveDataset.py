@@ -129,6 +129,7 @@ class AutoDriveDataset(Dataset):
         # print(resized_shape)
 
         det_label = data["label"]
+
         # print(det_label)
 
         labels = []
