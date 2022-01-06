@@ -84,36 +84,13 @@ class ModelWithLoss(nn.Module):
         _, regression, classification, anchors, segmentation = self.model(imgs)
 
         if self.debug:
-            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
+            cls_loss, reg_loss= self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
+            seg_loss = self.seg_criterion(segmentation, road_gt)
         else:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
             # Calculate segmentation loss
-
             seg_loss = self.seg_criterion(segmentation, road_gt)
-
-            # print(segmentation.size())
-
-            da_seg_mask = torch.rand((1, 384, 640))
-
-            # _, da_seg_mask = torch.max(seg,0)
-
-            da_seg_mask = da_seg_mask.squeeze().cpu().numpy()
-
-            da_seg_mask[da_seg_mask < 0.5] = 0
-            print(np.count_nonzero(da_seg_mask))
-
-            color_area = np.zeros((da_seg_mask.shape[0], da_seg_mask.shape[1], 3), dtype=np.uint8)
-
-            # for label, color in enumerate(palette):
-            #     color_area[result[0] == label, :] = color
-
-            color_area[da_seg_mask == 1] = [0, 255, 0]
-
-            color_seg = color_area[..., ::-1]
-
-            cv2.imwrite('seg.jpg', color_seg)
-
 
         return cls_loss, reg_loss, seg_loss
 
