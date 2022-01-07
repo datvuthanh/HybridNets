@@ -16,18 +16,21 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
+from utils import smp_metrics
 from backbone import EfficientDetBackbone
 from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
-from efficientdet.dataset import CocoDataset, Resizer, Normalizer, Augmenter, collater
+from efficientdet.dataset import collater
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
-from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string
+from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
+    ConfusionMatrix, scale_coords, process_batch, ap_per_class, postprocess, invert_affine, fitness
 from efficientdet.bdd import BddDataset
 from efficientdet.AutoDriveDataset import AutoDriveDataset
 from efficientdet.yolop_cfg import update_config
 from efficientdet.yolop_cfg import _C as cfg
 from efficientdet.yolop_utils import DataLoaderX
 import segmentation_models_pytorch as smp
+from efficientdet.utils import BBoxTransform, ClipBoxes
 
 import cv2
 
@@ -60,13 +63,15 @@ def get_args():
     parser.add_argument('--es_patience', type=int, default=0,
                         help='Early stopping\'s parameter: number of epochs with no improvement after which training will be stopped. Set to 0 to disable this technique.')
     parser.add_argument('--data_path', type=str, default='datasets/', help='the root folder of dataset')
-    parser.add_argument('--log_path', type=str, default='logs/')
+    parser.add_argument('--log_path', type=str, default='checkpoints/')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
                         help='whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
-    parser.add_argument('--saved_path', type=str, default='logs/')
+    parser.add_argument('--saved_path', type=str, default='checkpoints/')
     parser.add_argument('--debug', type=boolean_string, default=False,
                         help='whether visualize the predicted boxes of training, '
                              'the output images will be in test/')
+    parser.add_argument('--is_transfer', type=boolean_string, default=True,
+                        help='transfer learning from pretrained effdet')
 
     args = parser.parse_args()
     return args
@@ -80,25 +85,24 @@ class ModelWithLoss(nn.Module):
         self.model = model
         self.debug = debug
 
-    def forward(self, imgs, annotations,road_gt, obj_list=None):
+    def forward(self, imgs, annotations,seg_annot, obj_list=None):
         _, regression, classification, anchors, segmentation = self.model(imgs)
 
         if self.debug:
             cls_loss, reg_loss= self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
-            seg_loss = self.seg_criterion(segmentation, road_gt)
+            seg_loss = self.seg_criterion(segmentation, seg_annot)
         else:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
             # Calculate segmentation loss
-            seg_loss = self.seg_criterion(segmentation, road_gt)
+            seg_loss = self.seg_criterion(segmentation, seg_annot)
 
-        return cls_loss, reg_loss, seg_loss
+        return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
 
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
     update_config(cfg, opt)
-
 
     if params.num_gpus == 0:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -151,7 +155,7 @@ def train(opt):
 
     training_generator = DataLoaderX(
         train_dataset,
-        batch_size=4,
+        batch_size=opt.batch_size,
         shuffle=True,
         num_workers=cfg.WORKERS,
         pin_memory=cfg.PIN_MEMORY,
@@ -172,7 +176,7 @@ def train(opt):
 
     val_generator = DataLoaderX(
         valid_dataset,
-        batch_size=4,
+        batch_size=opt.batch_size,
         shuffle=False,
         num_workers=cfg.WORKERS,
         pin_memory=cfg.PIN_MEMORY,
@@ -189,15 +193,17 @@ def train(opt):
 
 
     # load last weights
-    if opt.load_weights is not None:
+    ckpt = None
+    # last_step = None
+    if opt.load_weights is not None and opt.is_transfer:
         if opt.load_weights.endswith('.pth'):
             weights_path = opt.load_weights
         else:
             weights_path = get_last_weights(opt.saved_path)
-        try:
-            last_step = int(os.path.basename(weights_path).split('_')[-1].split('.')[0])
-        except:
-            last_step = 0
+        # try:
+        #     last_step = int(os.path.basename(weights_path).split('_')[-1].split('.')[0])
+        # except:
+        #     last_step = 0
 
         try:
             ret = pretrainedmodels.load_state_dict(torch.load(weights_path), strict=False)
@@ -206,29 +212,40 @@ def train(opt):
             print(
                 '[Warning] Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
 
-        print(f'[Info] loaded weights: {os.path.basename(weights_path)}, resuming checkpoint from step: {last_step}')
+        print(f'[Info] loaded weights: {os.path.basename(weights_path)}')
+
+        print('[Info] Load a part of weights from pretrained models')
+
+        params1 = pretrainedmodels.state_dict()
+        params2 = model.state_dict()
+
+        dict_params1 = dict(params1)
+        dict_params2 = dict(params2)
+
+        pretrained_dict = {k: v for k, v in dict_params1.items() if k in dict_params2}
+        dict_params2.update(pretrained_dict)
+        model.load_state_dict(dict_params2)
+
+    elif opt.load_weights is not None and opt.is_transfer == False:
+        if opt.load_weights.endswith('.pth'):
+            weights_path = opt.load_weights
+        else:
+            weights_path = get_last_weights(opt.saved_path)
+        # try:
+        #     last_step = int(os.path.basename(weights_path).split('_')[-1].split('.')[0])
+        # except:
+        #     last_step = 0
+
+        try:
+            ckpt = torch.load(weights_path)
+            model.load_state_dict(ckpt['model'], strict=False)
+        except RuntimeError as e:
+            print(f'[Warning] Ignoring {e}')
+            print(
+                '[Warning] Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
     else:
-        last_step = 0
         print('[Info] initializing weights...')
-        init_weights(pretrainedmodels)
-
-    print('[Info] Load a part of weights from pretrained models')
-    params1 = pretrainedmodels.state_dict()
-    params2 = model.state_dict()
-
-    dict_params1 = dict(params1)
-    dict_params2 = dict(params2)
-    #
-    # for name1, param1 in params1:
-    #     if name1 in dict_params2:
-    #         # print("inside",name1)
-    #         dict_params2[name1].data.copy_(param1.data)
-    #
-    # model.load_state_dict(dict_params2)
-
-    pretrained_dict = {k: v for k, v in dict_params1.items() if k in dict_params2}
-    dict_params2.update(pretrained_dict)
-    model.load_state_dict(dict_params2)
+        init_weights(model)
 
     print('[Info] Successfully!!!')
 
@@ -274,12 +291,16 @@ def train(opt):
         optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
     else:
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
+    if ckpt:
+        optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
     epoch = 0
     best_loss = 1e5
     best_epoch = 0
+    last_step = ckpt['step'] if ckpt else 0
+    best_fitness = ckpt['best_fitness'] if ckpt else 0
     step = max(0, last_step)
     model.train()
 
@@ -301,10 +322,7 @@ def train(opt):
 
                     imgs = data['img']
                     annot = data['annot']
-                    road_gt = data['road']
-                    print(road_gt.shape)
-
-                    # print(imgs)
+                    seg_annot = data['road']
 
 
                     if params.num_gpus == 1:
@@ -312,11 +330,11 @@ def train(opt):
                         # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                         imgs = imgs.cuda()
                         annot = annot.cuda()
-                        road_gt = road_gt.cuda()
+                        seg_annot = seg_annot.cuda()
 
 
                     optimizer.zero_grad()
-                    cls_loss, reg_loss, seg_loss = model(imgs, annot, road_gt,obj_list=params.obj_list)
+                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot,obj_list=params.obj_list)
                     cls_loss = cls_loss.mean()
                     reg_loss = reg_loss.mean()
                     seg_loss = seg_loss.mean()
@@ -355,6 +373,7 @@ def train(opt):
                     print('[Error]', traceback.format_exc())
                     print(e)
                     continue
+
             scheduler.step(np.mean(epoch_loss))
 
             if epoch % opt.val_interval == 0:
@@ -362,29 +381,100 @@ def train(opt):
                 loss_regression_ls = []
                 loss_classification_ls = []
                 loss_segmentation_ls = []
+                jdict, stats, ap, ap_class = [], [], [], []
+
+                iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
+                num_thresholds = iou_thresholds.numel()
+                nc = 1
+                seen = 0
+                plots = True
+                confusion_matrix = ConfusionMatrix(nc=nc)
+                s = ('%20s' + '%11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'IoU', 'F1')
+                dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+                iou_ls = []
+                f1_ls = []
+                regressBoxes = BBoxTransform()
+                clipBoxes = ClipBoxes()
                 for iter, data in enumerate(val_generator):
                     with torch.no_grad():
                         imgs = data['img']
                         annot = data['annot']
-                        road_gt = data['road']
+                        seg_annot = data['road']
 
                         if params.num_gpus == 1:
                             imgs = imgs.cuda()
                             annot = annot.cuda()
-                            road_gt = road_gt.cuda()
+                            seg_annot = seg_annot.cuda()
 
-                        cls_loss, reg_loss, seg_loss = model(imgs, annot, road_gt, obj_list=params.obj_list)
-                        cls_loss = cls_loss.mean()
-                        reg_loss = reg_loss.mean()
-                        seg_loss = seg_loss.mean()
+                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot, obj_list=params.obj_list)
+                    cls_loss = cls_loss.mean()
+                    reg_loss = reg_loss.mean()
+                    seg_loss = seg_loss.mean()
 
-                        loss = cls_loss + reg_loss + seg_loss
-                        if loss == 0 or not torch.isfinite(loss):
+                    out = postprocess(imgs.detach(),
+                                      torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
+                                      classification.detach(),
+                                      regressBoxes, clipBoxes,
+                                      0.5, 0.3)
+
+                    framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
+
+                    out = invert_affine(framed_metas, out)
+
+                    for i in range(annot.size(0)):
+                        seen += 1
+                        labels = annot[i]
+                        labels = labels[labels[:, 4] != -1]
+
+                        ou = out[i]
+
+                        nl = len(labels)
+
+                        # print(ou['rois'].shape, ou['class_ids'].shape)
+
+                        pred = np.column_stack([ou['rois'], ou['scores']])
+                        pred = np.column_stack([pred, ou['class_ids']])
+                        pred = torch.from_numpy(pred).cuda()
+
+                        target_class = labels[:, 4].tolist() if nl else []  # target class
+
+                        if len(pred) == 0:
+                            if nl:
+                                stats.append((torch.zeros(0, num_thresholds, dtype=torch.bool),
+                                              torch.Tensor(), torch.Tensor(), target_class))
+                            # print("here")
                             continue
 
-                        loss_classification_ls.append(cls_loss.item())
-                        loss_regression_ls.append(reg_loss.item())
-                        loss_segmentation_ls.append(seg_loss.item())
+                        if nl:
+                            labels = scale_coords((384, 640), labels, (720, 1280))
+                            correct = process_batch(pred, labels, iou_thresholds)
+                            if plots:
+                                confusion_matrix.process_batch(pred, labels)
+                        else:
+                            correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
+                        stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
+                        # print(stats)
+
+                    tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot.round().long(),
+                                                                           mode='binary', threshold=0.5)
+
+                    iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                    f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+
+                    iou_ls.append(iou.detach().cpu().numpy())
+                    f1_ls.append(f1.detach().cpu().numpy())
+
+                    loss = cls_loss + reg_loss + seg_loss
+                    if loss == 0 or not torch.isfinite(loss):
+                        continue
+
+                    loss_classification_ls.append(cls_loss.item())
+                    loss_regression_ls.append(reg_loss.item())
+                    loss_segmentation_ls.append(seg_loss.item())
+
+                iou_score = np.mean(iou_ls)
+                f1_score = np.mean(f1_ls)
 
                 cls_loss = np.mean(loss_classification_ls)
                 reg_loss = np.mean(loss_regression_ls)
@@ -399,12 +489,65 @@ def train(opt):
                 writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
                 writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
 
+                # Compute statistics
+                stats = [np.concatenate(x, 0) for x in zip(*stats)]
+                # print(stats[3])
 
-                if loss + opt.es_min_delta < best_loss:
-                    best_loss = loss
-                    best_epoch = epoch
+                # Count detected boxes per class
+                boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
+                ap50 = None
 
-                    save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+                save_dir = 'abc'
+                names = {
+                    0: 'car'
+                }
+                # Compute metrics
+                if len(stats) and stats[0].any():
+                    tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
+                    ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+                    mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
+                    nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
+                else:
+                    nt = torch.zeros(1)
+
+                # Print results
+                print(s)
+                pf = '%20s' + '%11i' * 2 + '%11.3g' * 6  # print format
+                print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score))
+
+                # Print results per class
+                verbose = True
+                training = False
+                nc = 1
+                if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+                    for i, c in enumerate(ap_class):
+                        print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+                # Plots
+                if plots:
+                    confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
+                    confusion_matrix.tp_fp()
+                    # callbacks.run('on_val_end')
+
+                results = (mp, mr, map50, map, iou_score,f1_score,loss)
+                fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, f1, loss ]
+
+
+                if fi > best_fitness:
+                    best_fitness = fi
+                    ckpt = {'epoch': epoch,
+                            'step': step,
+                            'best_fitness': best_fitness,
+                            'model': model,
+                            'optimizer': optimizer.state_dict()}
+                    print("Saving checkpoint with best fitness", fi[0])
+                    save_checkpoint(ckpt, f'efficientdet-d{opt.compound_coef}_best.pth')
+
+                # if loss + opt.es_min_delta < best_loss:
+                #     best_loss = loss
+                #     best_epoch = epoch
+                #
+                #     save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
 
                 model.train()
 
@@ -413,16 +556,18 @@ def train(opt):
                     print('[Info] Stop training at epoch {}. The lowest loss achieved is {}'.format(epoch, best_loss))
                     break
     except KeyboardInterrupt:
-        save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+        # save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
         writer.close()
     writer.close()
 
 
-def save_checkpoint(model, name):
-    if isinstance(model, CustomDataParallel):
-        torch.save(model.module.model.state_dict(), os.path.join(opt.saved_path, name))
+def save_checkpoint(ckpt, name):
+    if isinstance(ckpt['model'], CustomDataParallel):
+        ckpt['model'] = ckpt['model'].module.model.state_dict()
+        torch.save(ckpt, os.path.join(opt.saved_path, name))
     else:
-        torch.save(model.model.state_dict(), os.path.join(opt.saved_path, name))
+        ckpt['model'] = ckpt['model'].model.state_dict()
+        torch.save(ckpt, os.path.join(opt.saved_path, name))
 
 
 if __name__ == '__main__':
