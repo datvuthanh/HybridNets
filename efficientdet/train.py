@@ -12,14 +12,12 @@ import torch
 import yaml
 from tensorboardX import SummaryWriter
 from torch import nn
-from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
 from utils import smp_metrics
 from backbone import EfficientDetBackbone
 from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
-from efficientdet.dataset import collater
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
@@ -29,10 +27,13 @@ from efficientdet.AutoDriveDataset import AutoDriveDataset
 from efficientdet.yolop_cfg import update_config
 from efficientdet.yolop_cfg import _C as cfg
 from efficientdet.yolop_utils import DataLoaderX
-import segmentation_models_pytorch as smp
 from efficientdet.utils import BBoxTransform, ClipBoxes
+from utils.dice_loss import DiceLoss
+from utils.focal_loss import FocalLoss as FocalLossSeg
+from utils.tversky_loss import TverskyLoss
+from utils.dice_loss_old import DiceLoss as DiceLossOld
+from utils.lovasz_loss import LovaszLoss
 
-import cv2
 
 class Params:
     def __init__(self, project_file):
@@ -81,7 +82,11 @@ class ModelWithLoss(nn.Module):
     def __init__(self, model, debug=False):
         super().__init__()
         self.criterion = FocalLoss()
-        self.seg_criterion = smp.utils.losses.DiceLoss()
+        # self.seg_criterion1 = DiceLoss(mode='binary', from_logits=False)
+        # self.seg_criterion1 = DiceLossOld()
+        self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=False)
+        # self.seg_criterion1 = LovaszLoss(mode='binary')
+        self.seg_criterion2 = FocalLossSeg(mode='multilabel', alpha=0.25)
         self.model = model
         self.debug = debug
 
@@ -91,11 +96,40 @@ class ModelWithLoss(nn.Module):
         if self.debug:
             cls_loss, reg_loss= self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
-            seg_loss = self.seg_criterion(segmentation, seg_annot)
+            dice_loss = self.seg_criterion1(segmentation, seg_annot)
+            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
+            focal_loss = self.seg_criterion2(segmentation, seg_annot)
         else:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
             # Calculate segmentation loss
-            seg_loss = self.seg_criterion(segmentation, seg_annot)
+            # dice_loss = self.seg_criterion1(segmentation, seg_annot)
+            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
+            focal_loss = self.seg_criterion2(segmentation, seg_annot)
+            # lovasz_loss = self.seg_criterion1(segmentation, seg_annot)
+
+            # Visualization
+            # seg_0 = seg_annot[0]
+            # # print('bbb', seg_0.shape)
+            # seg_0 = torch.argmax(seg_0, dim = 0)
+            # # print('before', seg_0.shape)
+            # seg_0 = seg_0.cpu().numpy()
+            #     #.transpose(1, 2, 0)
+            # print(seg_0.shape)
+            #
+            # anh = np.zeros((384,640,3))
+            #
+            # anh[seg_0 == 0] = (255,0,0)
+            # anh[seg_0 == 1] = (0,255,0)
+            # anh[seg_0 == 2] = (0,0,255)
+            #
+            # anh = np.uint8(anh)
+            #
+            # cv2.imwrite('anh.jpg',anh)
+
+        seg_loss = tversky_loss + 1 * focal_loss
+        # seg_loss = lovasz_loss
+        # print("DICE", dice_loss)
+        # print("FOCAL", focal_loss)
 
         return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
@@ -116,30 +150,6 @@ def train(opt):
     opt.log_path = opt.log_path + f'/{params.project_name}/tensorboard/'
     os.makedirs(opt.log_path, exist_ok=True)
     os.makedirs(opt.saved_path, exist_ok=True)
-
-    training_params = {'batch_size': opt.batch_size,
-                       'shuffle': True,
-                       'drop_last': True,
-                       'collate_fn': collater,
-                       'num_workers': opt.num_workers}
-
-    val_params = {'batch_size': opt.batch_size,
-                  'shuffle': False,
-                  'drop_last': True,
-                  'collate_fn': collater,
-                  'num_workers': opt.num_workers}
-
-    input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
-    # training_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.train_set,
-    #                            transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
-    #                                                          Augmenter(),
-    #                                                          Resizer(input_sizes[opt.compound_coef])]))
-    # training_generator = DataLoader(training_set, **training_params)
-    #
-    # val_set = CocoDataset(root_dir=os.path.join(opt.data_path, params.project_name), set=params.val_set,
-    #                       transform=transforms.Compose([Normalizer(mean=params.mean, std=params.std),
-    #                                                     Resizer(input_sizes[opt.compound_coef])]))
-    # val_generator = DataLoader(val_set, **val_params)
 
     train_dataset = BddDataset(
         cfg=cfg,
@@ -183,17 +193,14 @@ def train(opt):
         collate_fn=AutoDriveDataset.collate_fn
     )
 
-    # model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-    #                              ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
-    pretrainedmodels = EfficientDetBackboneOld(num_classes=1, compound_coef=opt.compound_coef,
+    pretrainedmodels = EfficientDetBackboneOld(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
 
-    model = EfficientDetBackbone(num_classes=1, compound_coef=opt.compound_coef,
-                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
-
+    model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
+                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales), seg_classes = len(params.seg_list))
 
     # load last weights
-    ckpt = None
+    ckpt = {}
     # last_step = None
     if opt.load_weights is not None and opt.is_transfer:
         if opt.load_weights.endswith('.pth'):
@@ -225,8 +232,7 @@ def train(opt):
         pretrained_dict = {k: v for k, v in dict_params1.items() if k in dict_params2}
         dict_params2.update(pretrained_dict)
         model.load_state_dict(dict_params2)
-
-    elif opt.load_weights is not None and opt.is_transfer == False:
+    elif opt.load_weights is not None and not opt.is_transfer:
         if opt.load_weights.endswith('.pth'):
             weights_path = opt.load_weights
         else:
@@ -238,7 +244,8 @@ def train(opt):
 
         try:
             ckpt = torch.load(weights_path)
-            model.load_state_dict(ckpt['model'], strict=False)
+            model.load_state_dict(ckpt.get('model', ckpt), strict=False)
+
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
             print(
@@ -276,13 +283,12 @@ def train(opt):
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
-    # warp the model with loss function, to reduce the memory usage on gpu0 and speedup
+    # wrap the model with loss function, to reduce the memory usage on gpu0 and speedup
     model = ModelWithLoss(model, debug=opt.debug)
 
     if params.num_gpus > 0:
         model = model.cuda()
         if params.num_gpus > 1:
-            # print("WERWERWERWERWERWER")
             model = CustomDataParallel(model, params.num_gpus)
             if use_sync_bn:
                 patch_replication_callback(model)
@@ -291,7 +297,8 @@ def train(opt):
         optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
     else:
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
-    if ckpt:
+    # print(ckpt)
+    if opt.load_weights is not None and ckpt.get('optimizer', None):
         optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
@@ -299,8 +306,8 @@ def train(opt):
     epoch = 0
     best_loss = 1e5
     best_epoch = 0
-    last_step = ckpt['step'] if ckpt else 0
-    best_fitness = ckpt['best_fitness'] if ckpt else 0
+    last_step = ckpt['step'] if  opt.load_weights is not None and ckpt.get('step', None) else 0
+    best_fitness = ckpt['best_fitness'] if opt.load_weights is not None and ckpt.get('best_fitness', None) else 0
     step = max(0, last_step)
     model.train()
 
@@ -319,19 +326,16 @@ def train(opt):
                     progress_bar.update()
                     continue
                 try:
-
                     imgs = data['img']
                     annot = data['annot']
-                    seg_annot = data['road']
-
+                    seg_annot = data['segmentation']
 
                     if params.num_gpus == 1:
                         # if only one gpu, just send it to cuda:0
                         # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                         imgs = imgs.cuda()
                         annot = annot.cuda()
-                        seg_annot = seg_annot.cuda()
-
+                        seg_annot = seg_annot.cuda().long()
 
                     optimizer.zero_grad()
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot,obj_list=params.obj_list)
@@ -358,7 +362,6 @@ def train(opt):
                     writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
                     writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
 
-
                     # log learning_rate
                     current_lr = optimizer.param_groups[0]['lr']
                     writer.add_scalar('learning_rate', current_lr, step)
@@ -382,25 +385,25 @@ def train(opt):
                 loss_classification_ls = []
                 loss_segmentation_ls = []
                 jdict, stats, ap, ap_class = [], [], [], []
-
                 iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
                 num_thresholds = iou_thresholds.numel()
                 nc = 1
                 seen = 0
                 plots = True
                 confusion_matrix = ConfusionMatrix(nc=nc)
-                s = ('%20s' + '%11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'IoU', 'F1')
+                s = ('%15s' + '%11s' * 12) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'rIoU', 'rF1', 'lIoU', 'lF1')
                 dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-
-                iou_ls = []
-                f1_ls = []
+                iou_ls = [[] for _ in range(3)]
+                f1_ls = [[] for _ in range(3)]
                 regressBoxes = BBoxTransform()
                 clipBoxes = ClipBoxes()
+
                 for iter, data in enumerate(val_generator):
                     with torch.no_grad():
                         imgs = data['img']
                         annot = data['annot']
-                        seg_annot = data['road']
+                        seg_annot = data['segmentation']
+                        filenames = data['filenames']
 
                         if params.num_gpus == 1:
                             imgs = imgs.cuda()
@@ -428,10 +431,7 @@ def train(opt):
                         labels = labels[labels[:, 4] != -1]
 
                         ou = out[i]
-
                         nl = len(labels)
-
-                        # print(ou['rois'].shape, ou['class_ids'].shape)
 
                         pred = np.column_stack([ou['rois'], ou['scores']])
                         pred = np.column_stack([pred, ou['class_ids']])
@@ -456,14 +456,33 @@ def train(opt):
                         stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
                         # print(stats)
 
-                    tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot.round().long(),
-                                                                           mode='binary', threshold=0.5)
+                        # Visualization
+                        # seg_0 = segmentation[i]
+                        # # print('bbb', seg_0.shape)
+                        # seg_0 = torch.argmax(seg_0, dim = 0)
+                        # # print('before', seg_0.shape)
+                        # seg_0 = seg_0.cpu().numpy()
+                        #     #.transpose(1, 2, 0)
+                        # # print(seg_0.shape)
+                        # anh = np.zeros((384,640,3))
+                        # anh[seg_0 == 0] = (255,0,0)
+                        # anh[seg_0 == 1] = (0,255,0)
+                        # anh[seg_0 == 2] = (0,0,255)
+                        # anh = np.uint8(anh)
+                        # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-                    iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-                    f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                    for i in range(len(params.seg_list)+1):
+                        # print(segmentation[:,i,...].unsqueeze(1).size())
+                        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1),
+                                                                               seg_annot[:, i, ...].unsqueeze(1).round().long(),
+                                                                               mode='binary', threshold=0.5)
 
-                    iou_ls.append(iou.detach().cpu().numpy())
-                    f1_ls.append(f1.detach().cpu().numpy())
+                        iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                        # print("I", i , iou)
+                        f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+
+                        iou_ls[i].append(iou.detach().cpu().numpy())
+                        f1_ls[i].append(f1.detach().cpu().numpy())
 
                     loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
@@ -473,8 +492,14 @@ def train(opt):
                     loss_regression_ls.append(reg_loss.item())
                     loss_segmentation_ls.append(seg_loss.item())
 
+                # print(len(iou_ls[0]))
                 iou_score = np.mean(iou_ls)
+                # print(iou_score)
                 f1_score = np.mean(f1_ls)
+
+                for i in range(len(params.seg_list)+1):
+                    iou_ls[i] = np.mean(iou_ls[i])
+                    f1_ls[i] = np.mean(f1_ls[i])
 
                 cls_loss = np.mean(loss_classification_ls)
                 reg_loss = np.mean(loss_regression_ls)
@@ -494,9 +519,9 @@ def train(opt):
                 # print(stats[3])
 
                 # Count detected boxes per class
-                boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
-                ap50 = None
+                # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
 
+                ap50 = None
                 save_dir = 'abc'
                 names = {
                     0: 'car'
@@ -512,8 +537,9 @@ def train(opt):
 
                 # Print results
                 print(s)
-                pf = '%20s' + '%11i' * 2 + '%11.3g' * 6  # print format
-                print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score))
+                pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
+                print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
+                            iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
                 # Print results per class
                 verbose = True
@@ -527,11 +553,9 @@ def train(opt):
                 if plots:
                     confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
                     confusion_matrix.tp_fp()
-                    # callbacks.run('on_val_end')
 
                 results = (mp, mr, map50, map, iou_score,f1_score,loss)
                 fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, f1, loss ]
-
 
                 if fi > best_fitness:
                     best_fitness = fi
@@ -562,12 +586,18 @@ def train(opt):
 
 
 def save_checkpoint(ckpt, name):
-    if isinstance(ckpt['model'], CustomDataParallel):
-        ckpt['model'] = ckpt['model'].module.model.state_dict()
-        torch.save(ckpt, os.path.join(opt.saved_path, name))
+    if isinstance(ckpt, dict):
+        if isinstance(ckpt['model'], CustomDataParallel):
+            ckpt['model'] = ckpt['model'].module.model.state_dict()
+            torch.save(ckpt, os.path.join(opt.saved_path, name))
+        else:
+            ckpt['model'] = ckpt['model'].model.state_dict()
+            torch.save(ckpt, os.path.join(opt.saved_path, name))
     else:
-        ckpt['model'] = ckpt['model'].model.state_dict()
-        torch.save(ckpt, os.path.join(opt.saved_path, name))
+        if isinstance(ckpt, CustomDataParallel):
+            torch.save(ckpt.module.model.state_dict(), os.path.join(opt.saved_path, name))
+        else:
+            torch.save(ckpt.model.state_dict(), os.path.join(opt.saved_path, name))
 
 
 if __name__ == '__main__':
