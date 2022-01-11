@@ -192,8 +192,11 @@ def _get_stats_multilabel(
 ) -> Tuple[torch.LongTensor, torch.LongTensor, torch.LongTensor, torch.LongTensor]:
 
     batch_size, num_classes, *dims = target.shape
+    # print("HERER", batch_size, num_classes, *dims)
     output = output.view(batch_size, num_classes, -1)
     target = target.view(batch_size, num_classes, -1)
+
+    # print(output.size())
 
     tp = (output * target).sum(2)
     fp = output.sum(2) - tp

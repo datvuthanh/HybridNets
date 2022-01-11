@@ -12,20 +12,23 @@
 # 'truck': 40
 # }
 id_dict = {'person': 0, 'rider': 1, 'car': 2, 'bus': 3, 'truck': 4,
-'bike': 5, 'motor': 6, 'tl_green': 7, 'tl_red': 8,
-'tl_yellow': 9, 'tl_none': 10, 'traffic sign': 11, 'train': 12}
-id_dict_single = {'car': 0, 'bus': 1, 'truck': 2,'train': 3}
+           'bike': 5, 'motor': 6, 'tl_green': 7, 'tl_red': 8,
+           'tl_yellow': 9, 'tl_none': 10, 'traffic sign': 11, 'train': 12}
+id_dict_single = {'car': 0, 'bus': 1, 'truck': 2, 'train': 3}
+
+
 # id_dict = {'car': 0, 'bus': 1, 'truck': 2}
 
+
 def convert(size, box):
-    dw = 1./(size[0])
-    dh = 1./(size[1])
-    x = (box[0] + box[1])/2.0
-    y = (box[2] + box[3])/2.0
+    dw = 1. / (size[0])
+    dh = 1. / (size[1])
+    x = (box[0] + box[1]) / 2.0
+    y = (box[2] + box[3]) / 2.0
     w = box[1] - box[0]
     h = box[3] - box[2]
-    x = x*dw
-    w = w*dw
-    y = y*dh
-    h = h*dh
-    return (x,y,w,h)
+    x = x * dw
+    w = w * dw
+    y = y * dh
+    h = h * dh
+    return x, y, w, h

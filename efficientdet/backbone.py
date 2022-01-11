@@ -11,9 +11,11 @@ from efficientdet.segmentation_head import Activation, SegmentationHead, Classif
 
 
 class EfficientDetBackbone(nn.Module):
-    def __init__(self, num_classes=80, compound_coef=0, load_weights=False, **kwargs):
+    def __init__(self, num_classes=80, compound_coef=0, load_weights=False, seg_classes = 1, **kwargs):
         super(EfficientDetBackbone, self).__init__()
         self.compound_coef = compound_coef
+
+        self.seg_classes = seg_classes
 
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
         self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
@@ -58,8 +60,8 @@ class EfficientDetBackbone(nn.Module):
 
         self.segmentation_head = SegmentationHead(
             in_channels=32,
-            out_channels=1,
-            activation='sigmoid',
+            out_channels=self.seg_classes+1 if self.seg_classes > 1 else self.seg_classes,
+            activation='softmax2d' if self.seg_classes > 1 else 'sigmoid',
             kernel_size=1,
             upsampling=8,
         )
