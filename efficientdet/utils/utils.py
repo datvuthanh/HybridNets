@@ -21,7 +21,7 @@ from .sync_batchnorm import SynchronizedBatchNorm2d
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
-    w = [0.0, 0.0, 0.2, 0.5, 0.3, 0.0, 0.0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, iou score, f1_score, loss]
+    w = [0.0, 0.0, 0.1, 0.9, 0.0, 0.0, 0.0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, iou score, f1_score, loss]
     return (x[:, :] * w).sum(1)
 
 
@@ -226,7 +226,8 @@ class CustomDataParallel(nn.DataParallel):
             raise Exception('Batchsize must be greater than num_gpus.')
 
         return [(inputs[0][splits * device_idx: splits * (device_idx + 1)].to(f'cuda:{device_idx}', non_blocking=True),
-                 inputs[1][splits * device_idx: splits * (device_idx + 1)].to(f'cuda:{device_idx}', non_blocking=True))
+                 inputs[1][splits * device_idx: splits * (device_idx + 1)].to(f'cuda:{device_idx}', non_blocking=True),
+                 inputs[2][splits * device_idx: splits * (device_idx + 1)].to(f'cuda:{device_idx}', non_blocking=True))
                 for device_idx in range(len(devices))], \
                [kwargs] * len(devices)
 
