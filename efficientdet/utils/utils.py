@@ -352,6 +352,7 @@ def process_batch(detections, labels, iou_thresholds):
     Returns:
         correct (Array[N, 10]), for 10 IoU levels
     """
+    labels = labels.to(detections.device)
     # print("ASDA", detections[:, 5].shape)
     # print("SADASD", labels[:, 4].shape)
     correct = torch.zeros(detections.shape[0], iou_thresholds.shape[0], dtype=torch.bool, device=iou_thresholds.device)
@@ -391,6 +392,7 @@ def box_iou(box1, box2):
         # box = 4xn
         return (box[2] - box[0]) * (box[3] - box[1])
 
+    box1 = box1.cuda()
     area1 = box_area(box1.T)
     area2 = box_area(box2.T)
 
