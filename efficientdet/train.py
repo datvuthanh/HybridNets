@@ -473,8 +473,8 @@ def train(opt):
 
                     for i in range(len(params.seg_list)+1):
                         # print(segmentation[:,i,...].unsqueeze(1).size())
-                        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1),
-                                                                               seg_annot[:, i, ...].unsqueeze(1).round().long(),
+                        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1).cuda(),
+                                                                               seg_annot[:, i, ...].unsqueeze(1).round().long().cuda(),
                                                                                mode='binary', threshold=0.5)
 
                         iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
