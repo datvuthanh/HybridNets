@@ -6,6 +6,7 @@ import argparse
 import datetime
 import os
 import traceback
+import gc
 
 import numpy as np
 import torch
@@ -368,7 +369,10 @@ def train(opt):
 
                     step += 1
 
+                    del imgs, annot, seg_annot, cls_loss, reg_loss, seg_loss, loss
+
                     if step % opt.save_interval == 0 and step > 0:
+                        gc.collect()
                         save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
@@ -380,6 +384,7 @@ def train(opt):
             scheduler.step(np.mean(epoch_loss))
 
             if epoch % opt.val_interval == 0:
+                gc.collect()
                 model.eval()
                 loss_regression_ls = []
                 loss_classification_ls = []
@@ -403,73 +408,76 @@ def train(opt):
                         imgs = data['img']
                         annot = data['annot']
                         seg_annot = data['segmentation']
-                        filenames = data['filenames']
+                        # filenames = data['filenames']
 
                         if params.num_gpus == 1:
                             imgs = imgs.cuda()
                             annot = annot.cuda()
                             seg_annot = seg_annot.cuda()
 
-                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot, obj_list=params.obj_list)
-                    cls_loss = cls_loss.mean()
-                    reg_loss = reg_loss.mean()
-                    seg_loss = seg_loss.mean()
+                        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot, obj_list=params.obj_list)
+                        cls_loss = cls_loss.mean()
+                        reg_loss = reg_loss.mean()
+                        seg_loss = seg_loss.mean()
 
-                    out = postprocess(imgs.detach(),
-                                      torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
-                                      classification.detach(),
-                                      regressBoxes, clipBoxes,
-                                      0.5, 0.3)
+                        out = postprocess(imgs.detach(),
+                                          torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
+                                          classification.detach(),
+                                          regressBoxes, clipBoxes,
+                                          0.5, 0.3)
 
-                    framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
+                        framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
 
-                    out = invert_affine(framed_metas, out)
+                        out = invert_affine(framed_metas, out)
 
-                    for i in range(annot.size(0)):
-                        seen += 1
-                        labels = annot[i]
-                        labels = labels[labels[:, 4] != -1]
+                        for i in range(annot.size(0)):
+                            seen += 1
+                            labels = annot[i]
+                            labels = labels[labels[:, 4] != -1]
 
-                        ou = out[i]
-                        nl = len(labels)
+                            ou = out[i]
+                            nl = len(labels)
 
-                        pred = np.column_stack([ou['rois'], ou['scores']])
-                        pred = np.column_stack([pred, ou['class_ids']])
-                        pred = torch.from_numpy(pred).cuda()
+                            pred = np.column_stack([ou['rois'], ou['scores']])
+                            pred = np.column_stack([pred, ou['class_ids']])
+                            pred = torch.from_numpy(pred).cuda()
 
-                        target_class = labels[:, 4].tolist() if nl else []  # target class
+                            target_class = labels[:, 4].tolist() if nl else []  # target class
 
-                        if len(pred) == 0:
+                            if len(pred) == 0:
+                                if nl:
+                                    stats.append((torch.zeros(0, num_thresholds, dtype=torch.bool),
+                                                  torch.Tensor(), torch.Tensor(), target_class))
+                                # print("here")
+                                continue
+
                             if nl:
-                                stats.append((torch.zeros(0, num_thresholds, dtype=torch.bool),
-                                              torch.Tensor(), torch.Tensor(), target_class))
-                            # print("here")
-                            continue
+                                labels = scale_coords((384, 640), labels, (720, 1280))
+                                correct = process_batch(pred, labels, iou_thresholds)
+                                if plots:
+                                    confusion_matrix.process_batch(pred, labels)
+                            else:
+                                correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
+                            stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
 
-                        if nl:
-                            labels = scale_coords((384, 640), labels, (720, 1280))
-                            correct = process_batch(pred, labels, iou_thresholds)
-                            if plots:
-                                confusion_matrix.process_batch(pred, labels)
-                        else:
-                            correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
-                        stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
-                        # print(stats)
+                            del labels, pred, target_class, correct
+                            gc.collect()
+                            # print(stats)
 
-                        # Visualization
-                        # seg_0 = segmentation[i]
-                        # # print('bbb', seg_0.shape)
-                        # seg_0 = torch.argmax(seg_0, dim = 0)
-                        # # print('before', seg_0.shape)
-                        # seg_0 = seg_0.cpu().numpy()
-                        #     #.transpose(1, 2, 0)
-                        # # print(seg_0.shape)
-                        # anh = np.zeros((384,640,3))
-                        # anh[seg_0 == 0] = (255,0,0)
-                        # anh[seg_0 == 1] = (0,255,0)
-                        # anh[seg_0 == 2] = (0,0,255)
-                        # anh = np.uint8(anh)
-                        # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
+                            # Visualization
+                            # seg_0 = segmentation[i]
+                            # # print('bbb', seg_0.shape)
+                            # seg_0 = torch.argmax(seg_0, dim = 0)
+                            # # print('before', seg_0.shape)
+                            # seg_0 = seg_0.cpu().numpy()
+                            #     #.transpose(1, 2, 0)
+                            # # print(seg_0.shape)
+                            # anh = np.zeros((384,640,3))
+                            # anh[seg_0 == 0] = (255,0,0)
+                            # anh[seg_0 == 1] = (0,255,0)
+                            # anh[seg_0 == 2] = (0,0,255)
+                            # anh = np.uint8(anh)
+                            # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
                     for i in range(len(params.seg_list)+1):
                         # print(segmentation[:,i,...].unsqueeze(1).size())
@@ -573,6 +581,7 @@ def train(opt):
                 #
                 #     save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
 
+                gc.collect()
                 model.train()
 
                 # Early stopping
