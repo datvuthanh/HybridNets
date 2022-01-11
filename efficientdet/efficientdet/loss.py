@@ -3,7 +3,7 @@ import torch.nn as nn
 import cv2
 import numpy as np
 
-from efficientdet.utils import BBoxTransform, ClipBoxes
+from .utils import BBoxTransform, ClipBoxes
 from utils.utils import postprocess, invert_affine, display
 
 
@@ -54,38 +54,38 @@ class FocalLoss(nn.Module):
             # print(bbox_annotation)
 
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
-            
+
             if bbox_annotation.shape[0] == 0:
                 if torch.cuda.is_available():
-                    
+
                     alpha_factor = torch.ones_like(classification) * alpha
                     alpha_factor = alpha_factor.cuda()
                     alpha_factor = 1. - alpha_factor
                     focal_weight = classification
                     focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-                    
+
                     bce = -(torch.log(1.0 - classification))
-                    
+
                     cls_loss = focal_weight * bce
-                    
+
                     regression_losses.append(torch.tensor(0).to(dtype).cuda())
                     classification_losses.append(cls_loss.sum())
                 else:
-                    
+
                     alpha_factor = torch.ones_like(classification) * alpha
                     alpha_factor = 1. - alpha_factor
                     focal_weight = classification
                     focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-                    
+
                     bce = -(torch.log(1.0 - classification))
-                    
+
                     cls_loss = focal_weight * bce
-                    
+
                     regression_losses.append(torch.tensor(0).to(dtype))
                     classification_losses.append(cls_loss.sum())
 
                 continue
-                
+
             IoU = calc_iou(anchor[:, :], bbox_annotation[:, :4])
 
             # print("IOU", IoU)
