@@ -143,16 +143,16 @@ class AutoDriveDataset(Dataset):
         if self.is_train:
             # augmentation
             combination = (img, seg_label, lane_label)
-            (img, seg_label, lane_label), labels = random_perspective(
-                combination=combination,
-                targets=labels,
-                degrees=self.cfg.DATASET.ROT_FACTOR,
-                translate=self.cfg.DATASET.TRANSLATE,
-                scale=self.cfg.DATASET.SCALE_FACTOR,
-                shear=self.cfg.DATASET.SHEAR
-            )
+            # (img, seg_label, lane_label), labels = random_perspective(
+            #     combination=combination,
+            #     targets=labels,
+            #     degrees=self.cfg.DATASET.ROT_FACTOR,
+            #     translate=self.cfg.DATASET.TRANSLATE,
+            #     scale=self.cfg.DATASET.SCALE_FACTOR,
+            #     shear=self.cfg.DATASET.SHEAR
+            # )
             # print(labels.shape)
-            augment_hsv(img, hgain=self.cfg.DATASET.HSV_H, sgain=self.cfg.DATASET.HSV_S, vgain=self.cfg.DATASET.HSV_V)
+            # augment_hsv(img, hgain=self.cfg.DATASET.HSV_H, sgain=self.cfg.DATASET.HSV_S, vgain=self.cfg.DATASET.HSV_V)
             # img, seg_label, labels = cutout(combination=combination, labels=labels)
 
             # random left-right flip
