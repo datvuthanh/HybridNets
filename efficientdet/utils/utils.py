@@ -16,13 +16,14 @@ from torch import nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, _no_grad_normal_
 from torchvision.ops.boxes import batched_nms
 from pathlib import Path
-from utils.sync_batchnorm import SynchronizedBatchNorm2d
+from .sync_batchnorm import SynchronizedBatchNorm2d
 
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
-    w = [0.0, 0.0, 0.2, 0.4, 0.4, 0.0, 0.0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, iou score, f1_score, loss]
+    w = [0.0, 0.0, 0.2, 0.5, 0.3, 0.0, 0.0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, iou score, f1_score, loss]
     return (x[:, :] * w).sum(1)
+
 
 def invert_affine(metas: Union[float, list, tuple], preds):
     for i in range(len(preds)):
@@ -47,34 +48,6 @@ def aspectaware_resize_padding_edited(image, width, height, interpolation=None, 
     padding_w = 0
 
     image = cv2.resize(image, (640,384), interpolation=cv2.INTER_AREA)
-    # if old_w > old_h:
-    #     new_w = width
-    #     new_h = int(width / old_w * old_h)
-    # else:
-    #     new_w = int(height / old_h * old_w)
-    #     new_h = height
-    #
-    # canvas = np.zeros((height, height, c), np.float32)
-    # if means is not None:
-    #     canvas[...] = means
-    #
-    # if new_w != old_w or new_h != old_h:
-    #     if interpolation is None:
-    #         image = cv2.resize(image, (new_w, new_h))
-    #     else:
-    #         image = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
-    #
-    # padding_h = height - new_h
-    # padding_w = width - new_w
-    #
-    # if c > 1:
-    #     canvas[:new_h, :new_w] = image
-    # else:
-    #     if len(image.shape) == 2:
-    #         canvas[:new_h, :new_w, 0] = image
-    #     else:
-    #         canvas[:new_h, :new_w] = image
-
     return image, new_w, new_h, old_w, old_h, padding_w, padding_h
 
 
@@ -112,7 +85,7 @@ def aspectaware_resize_padding(image, width, height, interpolation=None, means=N
 
 
 def preprocess(*image_path, max_size=512, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
-    ori_imgs = [cv2.imread(img_path) for img_path in image_path]
+    ori_imgs = [cv2.imread(str(img_path)) for img_path in image_path]
     normalized_imgs = [(img[..., ::-1] / 255 - mean) / std for img in ori_imgs]
 
     imgs_meta = [aspectaware_resize_padding_edited(img, 640, 384,
@@ -366,7 +339,6 @@ def boolean_string(s):
     return s == 'True'
 
 
-
 # --------------------------EVAL UTILS---------------------------
 def process_batch(detections, labels, iou_thresholds):
     """
@@ -400,6 +372,7 @@ def process_batch(detections, labels, iou_thresholds):
 
     return correct
 
+
 def box_iou(box1, box2):
     # https://github.com/pytorch/vision/blob/master/torchvision/ops/boxes.py
     """
@@ -424,10 +397,8 @@ def box_iou(box1, box2):
     inter = (torch.min(box1[:, None, 2:], box2[:, 2:]) - torch.max(box1[:, None, :2], box2[:, :2])).clamp(0).prod(2)
     return inter / (area1[:, None] + area2 - inter)  # iou = inter / (area1 + area2 - inter)
 
+
 def xywh2xyxy(x):
-    # print(annot)
-
-
     # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[:, 0] = x[:, 0] - x[:, 2] / 2  # top left x
@@ -435,6 +406,7 @@ def xywh2xyxy(x):
     y[:, 2] = x[:, 0] + x[:, 2] / 2  # bottom right x
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
+
 
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     # Rescale coords (xyxy) from img1_shape to img0_shape
@@ -450,6 +422,7 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     coords[:, :4] /= gain
     clip_coords(coords, img0_shape)
     return coords
+
 
 def clip_coords(boxes, shape):
     # Clip bounding xyxy bounding boxes to image shape (height, width)
@@ -558,6 +531,7 @@ def compute_ap(recall, precision):
 
     return ap, mpre, mrec
 
+
 def plot_pr_curve(px, py, ap, save_dir='pr_curve.png', names=()):
     # Precision-recall curve
     fig, ax = plt.subplots(1, 1, figsize=(9, 6), tight_layout=True)
@@ -602,6 +576,7 @@ def plot_mc_curve(px, py, save_dir='mc_curve.png', names=(), xlabel='Confidence'
 
 def cal_weighted_ap(ap50):
     return 0.2 * ap50[1] + 0.3 * ap50[0] + 0.5 * ap50[2]
+
 
 class ConfusionMatrix:
     # Updated version of https://github.com/kaanakan/object_detection_confusion_matrix
