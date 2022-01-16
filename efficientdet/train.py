@@ -141,6 +141,10 @@ def train(opt):
     params = Params(f'projects/{opt.project}.yml')
     update_config(cfg, opt)
 
+    # use all in environment
+    params.num_gpus = torch.cuda.device_count()
+    print("Using {} GPUS".format(params.num_gpus))
+
     if params.num_gpus == 0:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
