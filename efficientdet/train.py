@@ -74,6 +74,8 @@ def get_args():
                              'the output images will be in test/')
     parser.add_argument('--is_transfer', type=boolean_string, default=True,
                         help='transfer learning from pretrained effdet')
+    parser.add_argument('--cal_map', type=boolean_string, default=True,
+                        help='calculate map in validation')
 
     args = parser.parse_args()
     return args
@@ -168,7 +170,7 @@ def train(opt):
         train_dataset,
         batch_size=opt.batch_size,
         shuffle=True,
-        num_workers=cfg.WORKERS,
+        num_workers=opt.num_workers,
         pin_memory=cfg.PIN_MEMORY,
         collate_fn=AutoDriveDataset.collate_fn
     )
@@ -189,7 +191,7 @@ def train(opt):
         valid_dataset,
         batch_size=opt.batch_size,
         shuffle=False,
-        num_workers=cfg.WORKERS,
+        num_workers=opt.num_workers,
         pin_memory=cfg.PIN_MEMORY,
         collate_fn=AutoDriveDataset.collate_fn
     )
@@ -369,10 +371,7 @@ def train(opt):
 
                     step += 1
 
-                    del imgs, annot, seg_annot, cls_loss, reg_loss, seg_loss, loss
-
                     if step % opt.save_interval == 0 and step > 0:
-                        gc.collect()
                         save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
@@ -384,7 +383,6 @@ def train(opt):
             scheduler.step(np.mean(epoch_loss))
 
             if epoch % opt.val_interval == 0:
-                gc.collect()
                 model.eval()
                 loss_regression_ls = []
                 loss_classification_ls = []
@@ -420,77 +418,77 @@ def train(opt):
                         reg_loss = reg_loss.mean()
                         seg_loss = seg_loss.mean()
 
-                        out = postprocess(imgs.detach(),
-                                          torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
-                                          classification.detach(),
-                                          regressBoxes, clipBoxes,
-                                          0.5, 0.3)
+                        if opt.cal_map:
+                            out = postprocess(imgs.detach(),
+                                              torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
+                                              classification.detach(),
+                                              regressBoxes, clipBoxes,
+                                              0.5, 0.3)
 
-                        framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
+                            framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
 
-                        out = invert_affine(framed_metas, out)
+                            out = invert_affine(framed_metas, out)
 
-                        for i in range(annot.size(0)):
-                            seen += 1
-                            labels = annot[i]
-                            labels = labels[labels[:, 4] != -1]
+                            for i in range(annot.size(0)):
+                                seen += 1
+                                labels = annot[i]
+                                labels = labels[labels[:, 4] != -1]
 
-                            ou = out[i]
-                            nl = len(labels)
+                                ou = out[i]
+                                nl = len(labels)
 
-                            pred = np.column_stack([ou['rois'], ou['scores']])
-                            pred = np.column_stack([pred, ou['class_ids']])
-                            pred = torch.from_numpy(pred).cuda()
+                                pred = np.column_stack([ou['rois'], ou['scores']])
+                                pred = np.column_stack([pred, ou['class_ids']])
+                                pred = torch.from_numpy(pred).cuda()
 
-                            target_class = labels[:, 4].tolist() if nl else []  # target class
+                                target_class = labels[:, 4].tolist() if nl else []  # target class
 
-                            if len(pred) == 0:
+                                if len(pred) == 0:
+                                    if nl:
+                                        stats.append((torch.zeros(0, num_thresholds, dtype=torch.bool),
+                                                      torch.Tensor(), torch.Tensor(), target_class))
+                                    # print("here")
+                                    continue
+
                                 if nl:
-                                    stats.append((torch.zeros(0, num_thresholds, dtype=torch.bool),
-                                                  torch.Tensor(), torch.Tensor(), target_class))
-                                # print("here")
-                                continue
+                                    labels = scale_coords((384, 640), labels, (720, 1280))
+                                    correct = process_batch(pred, labels, iou_thresholds)
+                                    if plots:
+                                        confusion_matrix.process_batch(pred, labels)
+                                else:
+                                    correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
+                                stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
 
-                            if nl:
-                                labels = scale_coords((384, 640), labels, (720, 1280))
-                                correct = process_batch(pred, labels, iou_thresholds)
-                                if plots:
-                                    confusion_matrix.process_batch(pred, labels)
-                            else:
-                                correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
-                            stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
+                                # print(stats)
 
-                            del labels, pred, target_class, correct
-                            gc.collect()
-                            # print(stats)
+                                # Visualization
+                                # seg_0 = segmentation[i]
+                                # # print('bbb', seg_0.shape)
+                                # seg_0 = torch.argmax(seg_0, dim = 0)
+                                # # print('before', seg_0.shape)
+                                # seg_0 = seg_0.cpu().numpy()
+                                #     #.transpose(1, 2, 0)
+                                # # print(seg_0.shape)
+                                # anh = np.zeros((384,640,3))
+                                # anh[seg_0 == 0] = (255,0,0)
+                                # anh[seg_0 == 1] = (0,255,0)
+                                # anh[seg_0 == 2] = (0,0,255)
+                                # anh = np.uint8(anh)
+                                # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-                            # Visualization
-                            # seg_0 = segmentation[i]
-                            # # print('bbb', seg_0.shape)
-                            # seg_0 = torch.argmax(seg_0, dim = 0)
-                            # # print('before', seg_0.shape)
-                            # seg_0 = seg_0.cpu().numpy()
-                            #     #.transpose(1, 2, 0)
-                            # # print(seg_0.shape)
-                            # anh = np.zeros((384,640,3))
-                            # anh[seg_0 == 0] = (255,0,0)
-                            # anh[seg_0 == 1] = (0,255,0)
-                            # anh[seg_0 == 2] = (0,0,255)
-                            # anh = np.uint8(anh)
-                            # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
+                    if opt.cal_map:
+                        for i in range(len(params.seg_list)+1):
+                            # print(segmentation[:,i,...].unsqueeze(1).size())
+                            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1).cuda(),
+                                                                                   seg_annot[:, i, ...].unsqueeze(1).round().long().cuda(),
+                                                                                   mode='binary', threshold=0.5)
 
-                    for i in range(len(params.seg_list)+1):
-                        # print(segmentation[:,i,...].unsqueeze(1).size())
-                        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1).cuda(),
-                                                                               seg_annot[:, i, ...].unsqueeze(1).round().long().cuda(),
-                                                                               mode='binary', threshold=0.5)
+                            iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                            # print("I", i , iou)
+                            f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
 
-                        iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-                        # print("I", i , iou)
-                        f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-
-                        iou_ls[i].append(iou.detach().cpu().numpy())
-                        f1_ls[i].append(f1.detach().cpu().numpy())
+                            iou_ls[i].append(iou.detach().cpu().numpy())
+                            f1_ls[i].append(f1.detach().cpu().numpy())
 
                     loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
@@ -500,14 +498,15 @@ def train(opt):
                     loss_regression_ls.append(reg_loss.item())
                     loss_segmentation_ls.append(seg_loss.item())
 
-                # print(len(iou_ls[0]))
-                iou_score = np.mean(iou_ls)
-                # print(iou_score)
-                f1_score = np.mean(f1_ls)
+                if opt.cal_map:
+                    # print(len(iou_ls[0]))
+                    iou_score = np.mean(iou_ls)
+                    # print(iou_score)
+                    f1_score = np.mean(f1_ls)
 
-                for i in range(len(params.seg_list)+1):
-                    iou_ls[i] = np.mean(iou_ls[i])
-                    f1_ls[i] = np.mean(f1_ls[i])
+                    for i in range(len(params.seg_list)+1):
+                        iou_ls[i] = np.mean(iou_ls[i])
+                        f1_ls[i] = np.mean(f1_ls[i])
 
                 cls_loss = np.mean(loss_classification_ls)
                 reg_loss = np.mean(loss_regression_ls)
@@ -522,66 +521,68 @@ def train(opt):
                 writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
                 writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
 
-                # Compute statistics
-                stats = [np.concatenate(x, 0) for x in zip(*stats)]
-                # print(stats[3])
+                if opt.cal_map:
+                    # Compute statistics
+                    stats = [np.concatenate(x, 0) for x in zip(*stats)]
+                    # print(stats[3])
 
-                # Count detected boxes per class
-                # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
+                    # Count detected boxes per class
+                    # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
 
-                ap50 = None
-                save_dir = 'abc'
-                names = {
-                    0: 'car'
-                }
-                # Compute metrics
-                if len(stats) and stats[0].any():
-                    tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
-                    ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-                    mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-                    nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
+                    ap50 = None
+                    save_dir = 'abc'
+                    names = {
+                        0: 'car'
+                    }
+                    # Compute metrics
+                    if len(stats) and stats[0].any():
+                        tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
+                        ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
+                        mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
+                        nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
+                    else:
+                        nt = torch.zeros(1)
+
+                    # Print results
+                    print(s)
+                    pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
+                    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
+                                iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
+
+                    # Print results per class
+                    verbose = True
+                    training = False
+                    nc = 1
+                    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+                        for i, c in enumerate(ap_class):
+                            print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+                    # Plots
+                    if plots:
+                        confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
+                        confusion_matrix.tp_fp()
+
+                    results = (mp, mr, map50, map, iou_score,f1_score,loss)
+                    fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, f1, loss ]
+
+                    # if calculating map, save by best fitness
+                    if fi > best_fitness:
+                        best_fitness = fi
+                        ckpt = {'epoch': epoch,
+                                'step': step,
+                                'best_fitness': best_fitness,
+                                'model': model,
+                                'optimizer': optimizer.state_dict()}
+                        print("Saving checkpoint with best fitness", fi[0])
+                        save_checkpoint(ckpt, f'efficientdet-d{opt.compound_coef}_best.pth')
                 else:
-                    nt = torch.zeros(1)
+                    # if not calculating map, save by best loss
+                    if loss + opt.es_min_delta < best_loss:
+                        best_loss = loss
+                        best_epoch = epoch
 
-                # Print results
-                print(s)
-                pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
-                print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
-                            iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
+                        save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
 
-                # Print results per class
-                verbose = True
-                training = False
-                nc = 1
-                if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
-                    for i, c in enumerate(ap_class):
-                        print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-
-                # Plots
-                if plots:
-                    confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
-                    confusion_matrix.tp_fp()
-
-                results = (mp, mr, map50, map, iou_score,f1_score,loss)
-                fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, f1, loss ]
-
-                if fi > best_fitness:
-                    best_fitness = fi
-                    ckpt = {'epoch': epoch,
-                            'step': step,
-                            'best_fitness': best_fitness,
-                            'model': model,
-                            'optimizer': optimizer.state_dict()}
-                    print("Saving checkpoint with best fitness", fi[0])
-                    save_checkpoint(ckpt, f'efficientdet-d{opt.compound_coef}_best.pth')
-
-                # if loss + opt.es_min_delta < best_loss:
-                #     best_loss = loss
-                #     best_epoch = epoch
-                #
-                #     save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
-
-                gc.collect()
                 model.train()
 
                 # Early stopping
