@@ -26,7 +26,7 @@ _C.MODEL.STRU_WITHSHARE = False  # add share_block to segbranch
 _C.MODEL.HEADS_NAME = ['']
 _C.MODEL.PRETRAINED = ""
 _C.MODEL.PRETRAINED_DET = ""
-_C.MODEL.IMAGE_SIZE = [640, 640]  # width * height, ex: 192 * 256
+_C.MODEL.IMAGE_SIZE = [640, 384]  # width * height, ex: 192 * 256
 _C.MODEL.EXTRA = CN(new_allowed=True)
 
 # loss params
@@ -46,14 +46,14 @@ _C.LOSS.LL_IOU_GAIN = 0.2  # lane line iou loss gain
 
 # DATASET related params
 _C.DATASET = CN(new_allowed=True)
-# _C.DATASET.DATAROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/efficientdet/datasets/bdd100k_effdet'  # the path of images folder
-# _C.DATASET.LABELROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/det_annotations/data2/zwt/bdd/bdd100k/labels/100k'  # the path of det_annotations folder
-# _C.DATASET.MASKROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/da_seg_annotations/bdd_seg_gt'  # the path of da_seg_annotations folder
-# _C.DATASET.LANEROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/ll_seg_annotations/bdd_lane_gt'  # the path of ll_seg_annotations folder
-_C.DATASET.DATAROOT = '/workspace/FinalProject/efficientdet/datasets/bdd100k_effdet'  # the path of images folder
-_C.DATASET.LABELROOT = '/workspace/FinalProject/efficientdet/datasets/data2/zwt/bdd/bdd100k/labels/100k'  # the path of det_annotations folder
-_C.DATASET.MASKROOT = '/workspace/FinalProject/efficientdet/datasets/bdd_seg_gt'  # the path of da_seg_annotations folder
-_C.DATASET.LANEROOT = '/workspace/FinalProject/efficientdet/datasets/bdd_lane_gt'  # the path of ll_seg_annotations folder
+_C.DATASET.DATAROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/efficientdet/datasets/bdd100k_effdet'  # the path of images folder
+_C.DATASET.LABELROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/det_annotations/data2/zwt/bdd/bdd100k/labels/100k'  # the path of det_annotations folder
+_C.DATASET.MASKROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/da_seg_annotations/bdd_seg_gt'  # the path of da_seg_annotations folder
+_C.DATASET.LANEROOT = '/home/pingu/PycharmProjects/FinalProject/FinalProject/bdd100k/ll_seg_annotations/bdd_lane_gt'  # the path of ll_seg_annotations folder
+# _C.DATASET.DATAROOT = '/workspace/FinalProject/efficientdet/datasets/bdd100k_effdet'  # the path of images folder
+# _C.DATASET.LABELROOT = '/workspace/FinalProject/efficientdet/datasets/data2/zwt/bdd/bdd100k/labels/100k'  # the path of det_annotations folder
+# _C.DATASET.MASKROOT = '/workspace/FinalProject/efficientdet/datasets/bdd_seg_gt'  # the path of da_seg_annotations folder
+# _C.DATASET.LANEROOT = '/workspace/FinalProject/efficientdet/datasets/bdd_lane_gt'  # the path of ll_seg_annotations folder
 _C.DATASET.DATASET = 'BddDataset'
 _C.DATASET.TRAIN_SET = 'train'
 _C.DATASET.TEST_SET = 'val'
