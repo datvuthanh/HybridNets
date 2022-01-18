@@ -21,7 +21,8 @@ from backbone import EfficientDetBackbone
 from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
 from efficientdet.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
-from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string
+from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
+    save_checkpoint
 from efficientdet.bdd import BddDataset
 from efficientdet.AutoDriveDataset import AutoDriveDataset
 from efficientdet.yolop_cfg import update_config
@@ -374,7 +375,7 @@ def train(opt):
                     step += 1
 
                     if step % opt.save_interval == 0 and step > 0:
-                        save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+                        save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
                 except Exception as e:
@@ -388,24 +389,9 @@ def train(opt):
                 best_fitness, best_loss, best_epoch = val(model, optimizer, val_generator, params, opt, writer, epoch,
                                                           step, best_fitness, best_loss, best_epoch)
     except KeyboardInterrupt:
-        # save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+        # save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
         writer.close()
     writer.close()
-
-
-def save_checkpoint(ckpt, name):
-    if isinstance(ckpt, dict):
-        if isinstance(ckpt['model'], CustomDataParallel):
-            ckpt['model'] = ckpt['model'].module.model.state_dict()
-            torch.save(ckpt, os.path.join(opt.saved_path, name))
-        else:
-            ckpt['model'] = ckpt['model'].model.state_dict()
-            torch.save(ckpt, os.path.join(opt.saved_path, name))
-    else:
-        if isinstance(ckpt, CustomDataParallel):
-            torch.save(ckpt.module.model.state_dict(), os.path.join(opt.saved_path, name))
-        else:
-            torch.save(ckpt.model.state_dict(), os.path.join(opt.saved_path, name))
 
 
 if __name__ == '__main__':
