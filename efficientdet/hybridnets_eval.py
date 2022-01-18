@@ -61,7 +61,7 @@ print(f'running coco-style evaluation on project {project_name}, weights {weight
 
 params = yaml.safe_load(open(f'projects/{project_name}.yml'))
 obj_list = params['obj_list']
-
+print(params)
 input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
 
 
@@ -186,9 +186,13 @@ if __name__ == '__main__':
     )
 
     if override_prev_results or not os.path.exists(f'{SET_NAME}_bbox_results.json'):
-        model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=1,
-                                     ratios=eval(params['anchors_ratios']), scales=eval(params['anchors_scales']))
-        model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
+        model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(params['obj_list']),
+                                     ratios=eval(params['anchors_ratios']), scales=eval(params['anchors_scales']),
+                                     seg_classes = len(params['seg_list']))
+        try:
+            model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
+        except:
+            model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu'))['model'])
         model.requires_grad_(False)
         model.eval()
 
@@ -202,26 +206,25 @@ if __name__ == '__main__':
         loss_classification_ls = []
         loss_segmentation_ls = []
         jdict, stats, ap, ap_class = [], [], [], []
-
-        regressBoxes = BBoxTransform()
-        clipBoxes = ClipBoxes()
         iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
         num_thresholds = iou_thresholds.numel()
         nc = 1
         seen = 0
         plots = True
         confusion_matrix = ConfusionMatrix(nc=nc)
-        s = ('%20s' + '%11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'IoU', 'F1')
+        s = ('%15s' + '%11s' * 12) % (
+            'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'rIoU', 'rF1', 'lIoU', 'lF1')
         dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        iou_ls = [[] for _ in range(3)]
+        f1_ls = [[] for _ in range(3)]
+        regressBoxes = BBoxTransform()
+        clipBoxes = ClipBoxes()
 
-        iou_ls = []
-        f1_ls = []
         for iter, data in enumerate(val_generator):
-            # print(iter)
             with torch.no_grad():
                 imgs = data['img']
                 annot = data['annot']
-                seg_annot = data['road']
+                seg_annot = data['segmentation']
 
                 # if params.num_gpus == 1:
                 imgs = imgs.cuda()
@@ -231,24 +234,22 @@ if __name__ == '__main__':
             features, regressions, classifications, anchors, segmentation = model(imgs)
 
             out = postprocess(imgs.detach(),
-                              torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(), classifications.detach(),
-                              regressBoxes, clipBoxes,
-                              0.5, 0.3)
+                                          torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(),
+                                          classifications.detach(),
+                                          regressBoxes, clipBoxes,
+                                          0.5, 0.3)
 
             framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
 
             out = invert_affine(framed_metas, out)
 
-            for i in range(4):
+            for i in range(annot.size(0)):
                 seen += 1
                 labels = annot[i]
                 labels = labels[labels[:, 4] != -1]
 
                 ou = out[i]
-
                 nl = len(labels)
-
-                # print(ou['rois'].shape, ou['class_ids'].shape)
 
                 pred = np.column_stack([ou['rois'], ou['scores']])
                 pred = np.column_stack([pred, ou['class_ids']])
@@ -264,40 +265,63 @@ if __name__ == '__main__':
                     continue
 
                 if nl:
-                    labels = scale_coords((384,640), labels, (720, 1280))
+                    labels = scale_coords((384, 640), labels, (720, 1280))
                     correct = process_batch(pred, labels, iou_thresholds)
                     if plots:
                         confusion_matrix.process_batch(pred, labels)
                 else:
                     correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
                 stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
+
+
                 # print(stats)
 
-            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot.round().long(), mode='binary', threshold=0.5)
-            # print(tp_seg, fp_seg, fn_seg, tn_seg)
+                # Visualization
+                # seg_0 = segmentation[i]
+                # # print('bbb', seg_0.shape)
+                # seg_0 = torch.argmax(seg_0, dim = 0)
+                # # print('before', seg_0.shape)
+                # seg_0 = seg_0.cpu().numpy()
+                #     #.transpose(1, 2, 0)
+                # # print(seg_0.shape)
+                # anh = np.zeros((384,640,3))
+                # anh[seg_0 == 0] = (255,0,0)
+                # anh[seg_0 == 1] = (0,255,0)
+                # anh[seg_0 == 2] = (0,0,255)
+                # anh = np.uint8(anh)
+                # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-            iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-            f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-            # print(iou)
-            # print("f1",f1)
-            iou_ls.append(iou.detach().cpu().numpy())
-            f1_ls.append(f1.detach().cpu().numpy())
+            for i in range(len(params['seg_list'])+1):
+                # print(segmentation[:,i,...].unsqueeze(1).size())
+                tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1).cuda(),
+                                                                        seg_annot[:, i, ...].unsqueeze(1).round().long().cuda(),
+                                                                        mode='binary', threshold=0.5)
 
-        # print(f1_ls)
+                iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                # print("I", i , iou)
+                f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+
+                iou_ls[i].append(iou.detach().cpu().numpy())
+                f1_ls[i].append(f1.detach().cpu().numpy())
+
+        # print(len(iou_ls[0]))
+        # print(iou_ls)
         iou_score = np.mean(iou_ls)
-        f1_score = np.mean(f1_ls)
         # print(iou_score)
-        # print(f1_score)
+        f1_score = np.mean(f1_ls)
 
+        for i in range(len(params['seg_list']) + 1):
+            iou_ls[i] = np.mean(iou_ls[i])
+            f1_ls[i] = np.mean(f1_ls[i])
 
         # Compute statistics
         stats = [np.concatenate(x, 0) for x in zip(*stats)]
+        # print(stats[3])
 
         # Count detected boxes per class
-        boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
+        # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
+
         ap50 = None
-
-
         save_dir = 'abc'
         names = {
             0: 'car'
@@ -313,8 +337,9 @@ if __name__ == '__main__':
 
         # Print results
         print(s)
-        pf = '%20s' + '%11i' * 2 + '%11.3g' * 6  # print format
-        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score))
+        pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
+        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
+                    iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
         # Print results per class
         verbose = True
@@ -328,4 +353,3 @@ if __name__ == '__main__':
         if plots:
             confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
             confusion_matrix.tp_fp()
-            # callbacks.run('on_val_end')
