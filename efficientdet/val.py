@@ -1,10 +1,10 @@
 import torch
 import numpy as np
 
-from train import save_checkpoint
 from utils import smp_metrics
 from efficientdet.utils import BBoxTransform, ClipBoxes
-from utils.utils import ConfusionMatrix, postprocess, invert_affine, scale_coords, process_batch, ap_per_class, fitness
+from utils.utils import ConfusionMatrix, postprocess, invert_affine, scale_coords, process_batch, ap_per_class, fitness, \
+    save_checkpoint
 
 
 @torch.no_grad()
@@ -202,14 +202,14 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     'model': model,
                     'optimizer': optimizer.state_dict()}
             print("Saving checkpoint with best fitness", fi[0])
-            save_checkpoint(ckpt, f'efficientdet-d{opt.compound_coef}_best.pth')
+            save_checkpoint(ckpt, opt.saved_path, f'efficientdet-d{opt.compound_coef}_best.pth')
     else:
         # if not calculating map, save by best loss
         if loss + opt.es_min_delta < best_loss:
             best_loss = loss
             best_epoch = epoch
 
-            save_checkpoint(model, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+            save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
 
     # Early stopping
     if epoch - best_epoch > opt.es_patience > 0:
