@@ -28,7 +28,8 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
-    for iter, data in enumerate(val_generator):
+    val_loader = tqdm(val_generator)
+    for iter, data in enumerate(val_loader):
         imgs = data['img']
         annot = data['annot']
         seg_annot = data['segmentation']
