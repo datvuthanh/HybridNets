@@ -4,6 +4,7 @@ import json
 from .AutoDriveDataset import AutoDriveDataset
 from .convert import convert, id_dict, id_dict_single
 from tqdm import tqdm
+#import cv2
 
 single_cls = True  # just detect vehicle
 
@@ -63,6 +64,26 @@ class BddDataset(AutoDriveDataset):
                 'mask': mask_path,
                 'lane': lane_path
             }]
+
+            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
+            # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # for label in gt:
+            #     # print(label[1])
+            #     x1 = label[1] - label[3] / 2
+            #     x1 *= 1280
+            #     x1 = int(x1)
+            #     # print(x1)
+            #     x2 = label[1] + label[3] / 2
+            #     x2 *= 1280
+            #     x2 = int(x2)
+            #     y1 = label[2] - label[4] / 2
+            #     y1 *= 720
+            #     y1 = int(y1)
+            #     y2 = label[2] + label[4] / 2
+            #     y2 *= 720
+            #     y2 = int(y2)
+            #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
 
             gt_db += rec
         print('database build finish')
