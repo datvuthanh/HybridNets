@@ -220,7 +220,8 @@ if __name__ == '__main__':
         regressBoxes = BBoxTransform()
         clipBoxes = ClipBoxes()
 
-        for iter, data in enumerate(val_generator):
+        val_loader = tqdm(val_generator)
+        for iter, data in enumerate(val_loader):
             with torch.no_grad():
                 imgs = data['img']
                 annot = data['annot']
