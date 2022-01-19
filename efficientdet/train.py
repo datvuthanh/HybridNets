@@ -16,7 +16,7 @@ from torch import nn
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
-from FinalProject.efficientdet.val import val
+from val import val
 from backbone import EfficientDetBackbone
 from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
 from efficientdet.loss import FocalLoss
