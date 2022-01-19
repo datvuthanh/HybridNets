@@ -19,6 +19,21 @@ from pathlib import Path
 from .sync_batchnorm import SynchronizedBatchNorm2d
 
 
+def save_checkpoint(ckpt, saved_path, name):
+    if isinstance(ckpt, dict):
+        if isinstance(ckpt['model'], CustomDataParallel):
+            ckpt['model'] = ckpt['model'].module.model.state_dict()
+            torch.save(ckpt, os.path.join(saved_path, name))
+        else:
+            ckpt['model'] = ckpt['model'].model.state_dict()
+            torch.save(ckpt, os.path.join(saved_path, name))
+    else:
+        if isinstance(ckpt, CustomDataParallel):
+            torch.save(ckpt.module.model.state_dict(), os.path.join(saved_path, name))
+        else:
+            torch.save(ckpt.model.state_dict(), os.path.join(saved_path, name))
+
+
 def fitness(x):
     # Model fitness as a weighted combination of metrics
     w = [0.0, 0.0, 0.1, 0.9, 0.0, 0.0, 0.0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, iou score, f1_score, loss]
