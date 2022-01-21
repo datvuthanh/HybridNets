@@ -5,6 +5,7 @@ from utils import smp_metrics
 from efficientdet.utils import BBoxTransform, ClipBoxes
 from utils.utils import ConfusionMatrix, postprocess, invert_affine, scale_coords, process_batch, ap_per_class, fitness, \
     save_checkpoint
+from tqdm.autonotebook import tqdm
 
 
 @torch.no_grad()
