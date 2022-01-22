@@ -18,21 +18,6 @@ import math
 from torch.cuda import amp
 from tqdm import tqdm
 
-import numpy as np
-import os
-import time
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch_xla
-import torch_xla.core.xla_model as xm
-import torch_xla.debug.metrics as met
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.utils.utils as xu
-from torchvision import datasets, transforms
-
 import gc
 
 
@@ -426,7 +411,21 @@ def validate(epoch, config, val_loader, val_dataset, model, criterion, output_di
                     if pi.shape[0]:
                         # Prediction to target ious
                         # n*m  n:pred  m:label
+                        # print(paths[si])
                         ious, i = box_iou(predn[pi, :4], tbox[ti]).max(1)  # best ious, indices
+                        # real_img = cv2.imread(paths[si], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
+                        # cv2.imwrite('real.jpg', real_img)
+                        # for pred in predn:
+                        #   # print(pred)
+                        #   x1, y1, x2, y2 = [int(x) for x in pred[:4]]
+                        #   real_img = cv2.rectangle(real_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        # for label in tbox:
+                        #   x1, y1, x2, y2 = [int(x) for x in label]
+                        #   real_img = cv2.rectangle(real_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        # cv2.imwrite('yolop.jpg', real_img)
+
+                        # exit(0)
+
                         # Append detections
                         detected_set = set()
                         for j in (ious > iouv[0]).nonzero(as_tuple=False):
