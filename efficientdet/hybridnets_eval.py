@@ -226,6 +226,7 @@ if __name__ == '__main__':
                 imgs = data['img']
                 annot = data['annot']
                 seg_annot = data['segmentation']
+                filenames = data['filenames']
 
                 # if params.num_gpus == 1:
                 imgs = imgs.cuda()
@@ -267,6 +268,18 @@ if __name__ == '__main__':
 
                 if nl:
                     labels = scale_coords((384, 640), labels, (720, 1280))
+                    # ori_img = cv2.imread('datasets/bdd100k_effdet/val/' + filenames[i],
+                    #                      cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
+                    # for label in labels:
+                    #     x1, y1, x2, y2 = [int(x) for x in label[:4]]
+                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                    # for pre in pred:
+                    #     x1, y1, x2, y2 = [int(x) for x in pre[:4]]
+                    #     ori_img = cv2.putText(ori_img, str(pre[4].cpu().numpy()), (x1 - 10, y1 - 10),
+                    #                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    #
+                    # cv2.imwrite('{}.jpg'.format(i), ori_img)
                     correct = process_batch(pred, labels, iou_thresholds)
                     if plots:
                         confusion_matrix.process_batch(pred, labels)
@@ -329,7 +342,7 @@ if __name__ == '__main__':
         }
         # Compute metrics
         if len(stats) and stats[0].any():
-            tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
+            p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
             ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
             mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
             nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
