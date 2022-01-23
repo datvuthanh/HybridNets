@@ -97,6 +97,7 @@ class AutoDriveDataset(Dataset):
         data = self.db[idx]
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
         if self.cfg.num_seg_class == 3:
             seg_label = cv2.imread(data["mask"])
         else:
@@ -158,11 +159,20 @@ class AutoDriveDataset(Dataset):
             # random left-right flip
             lr_flip = True
             if lr_flip and random.random() < 0.5:
-                img = np.fliplr(img)
-                seg_label = np.fliplr(seg_label)
-                lane_label = np.fliplr(lane_label)
+                img = img[:, ::-1, :]
+
                 if len(labels):
-                    labels[:, 1] = 1 - labels[:, 1]
+                    rows, cols, channels = img.shape
+
+                    x1 = labels[:, 1].copy()
+                    x2 = labels[:, 3].copy()
+
+                    x_tmp = x1.copy()
+
+                    labels[:, 1] = cols - x2
+                    labels[:, 3] = cols - x_tmp
+
+            # print(labels)
 
             # random up-down flip
             ud_flip = False
@@ -173,10 +183,18 @@ class AutoDriveDataset(Dataset):
                 if len(labels):
                     labels[:, 2] = 1 - labels[:, 2]
 
+        # for anno in labels:
+        #   x1, y1, x2, y2 = [int(x) for x in anno[1:5]]
+        #   print(x1,y1,x2,y2)
+        #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 3)
+        # cv2.imwrite(data["image"].split("/")[-1], img)
+
+        # exit()
+
         if len(labels):
             labels_app = np.zeros((len(labels), 5))
-            labels_app[:,0:4] = labels[:,1:5]
-            labels_app[:,4] = labels[:,0]
+            labels_app[:, 0:4] = labels[:, 1:5]
+            labels_app[:, 4] = labels[:, 0]
 
         img = np.ascontiguousarray(img)
 
@@ -199,9 +217,14 @@ class AutoDriveDataset(Dataset):
         lane1 = self.Tensor(lane1)
         background = self.Tensor(background)
 
-        segmentation = torch.cat([background,seg1,lane1], dim = 0)
+        segmentation = torch.cat([background, seg1, lane1], dim=0)
         # print(segmentation.size())
         # print(seg1.shape)
+
+        # for anno in labels_app:
+        #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
+        #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 1)
+        # cv2.imwrite(data["image"].split("/")[-1], img)
 
         img = self.transform(img)
 
