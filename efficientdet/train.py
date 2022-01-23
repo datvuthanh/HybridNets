@@ -33,7 +33,6 @@ from utils.focal_loss import FocalLoss as FocalLossSeg
 from utils.tversky_loss import TverskyLoss
 from utils.dice_loss_old import DiceLoss as DiceLossOld
 from utils.lovasz_loss import LovaszLoss
-from utils.autoanchor import run_anchor
 
 
 class Params:
@@ -206,8 +205,6 @@ def train(opt):
     model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales), seg_classes = len(params.seg_list))
 
-    run_anchor(None, train_dataset, model=model, thr=cfg.TRAIN.ANCHOR_THRESHOLD, imgsz=min(cfg.MODEL.IMAGE_SIZE))
-    exit(0)
     # load last weights
     ckpt = {}
     # last_step = None
@@ -321,7 +318,6 @@ def train(opt):
     model.train()
 
     num_iter_per_epoch = len(training_generator)
-
     try:
         for epoch in range(opt.num_epochs):
             last_epoch = step // num_iter_per_epoch
