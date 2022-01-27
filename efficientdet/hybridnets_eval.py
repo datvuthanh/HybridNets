@@ -12,6 +12,7 @@ change compound_coef
 
 import json
 import os
+import cv2
 
 import argparse
 
@@ -22,8 +23,9 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
 from efficientdet.utils import BBoxTransform, ClipBoxes
-from utils.utils import preprocess, invert_affine, postprocess, boolean_string, ConfusionMatrix, scale_coords, process_batch, \
-                ap_per_class
+from utils.utils import preprocess, invert_affine, postprocess, boolean_string, ConfusionMatrix, scale_coords, \
+    process_batch, \
+    ap_per_class, remove_padding, display
 
 from backbone import EfficientDetBackbone
 from efficientdet.bdd import BddDataset
@@ -151,9 +153,6 @@ def _eval(coco_gt, image_ids, pred_json_path):
     coco_eval.summarize()
 
 
-
-
-
 if __name__ == '__main__':
     SET_NAME = params['val_set']
     VAL_GT = f'datasets/{params["project_name"]}/annotations/instances_{SET_NAME}.json'
@@ -178,7 +177,7 @@ if __name__ == '__main__':
 
     val_generator = DataLoaderX(
         valid_dataset,
-        batch_size=4,
+        batch_size=2,
         shuffle=False,
         num_workers=cfg.WORKERS,
         pin_memory=cfg.PIN_MEMORY,
@@ -188,7 +187,7 @@ if __name__ == '__main__':
     if override_prev_results or not os.path.exists(f'{SET_NAME}_bbox_results.json'):
         model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(params['obj_list']),
                                      ratios=eval(params['anchors_ratios']), scales=eval(params['anchors_scales']),
-                                     seg_classes = len(params['seg_list']))
+                                     seg_classes=len(params['seg_list']))
         try:
             model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
         except:
@@ -227,6 +226,7 @@ if __name__ == '__main__':
                 annot = data['annot']
                 seg_annot = data['segmentation']
                 filenames = data['filenames']
+                shapes = data['shapes']
 
                 # if params.num_gpus == 1:
                 imgs = imgs.cuda()
@@ -236,14 +236,23 @@ if __name__ == '__main__':
             features, regressions, classifications, anchors, segmentation = model(imgs)
 
             out = postprocess(imgs.detach(),
-                                          torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(),
-                                          classifications.detach(),
-                                          regressBoxes, clipBoxes,
-                                          0.5, 0.3)
+                              torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(),
+                              classifications.detach(),
+                              regressBoxes, clipBoxes,
+                              0.5, 0.3)
 
-            framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
+            # imgs = imgs.permute(0, 2, 3, 1).cpu().numpy()
+            # imgs = ((imgs * [0.229, 0.224, 0.225] + [0.485, 0.456, 0.406]) * 255).astype(np.uint8)
+            # imgs = [cv2.cvtColor(img, cv2.COLOR_RGB2BGR) for img in imgs]
+            # display(out, imgs, ['car'], imshow=False, imwrite=True)
 
-            out = invert_affine(framed_metas, out)
+            # for index, filename in enumerate(filenames):
+            #   ori_img = cv2.imread('datasets/bdd100k_effdet/val/'+filename)
+            #   if len(out[index]['rois']):
+            #     for roi in out[index]['rois']:
+            #       x1,y1,x2,y2 = [int(x) for x in roi]
+            #       cv2.rectangle(ori_img, (x1,y1), (x2,y2), (255,0,0), 1)
+            #   cv2.imwrite(filename, ori_img)
 
             for i in range(annot.size(0)):
                 seen += 1
@@ -267,26 +276,28 @@ if __name__ == '__main__':
                     continue
 
                 if nl:
-                    labels = scale_coords((384, 640), labels, (720, 1280))
+                    pred[:, :4] = scale_coords(imgs[i][1:], pred[:, :4], shapes[i][0], shapes[i][1])
+
+                    labels = scale_coords(imgs[i][1:], labels, shapes[i][0], shapes[i][1])
+
                     # ori_img = cv2.imread('datasets/bdd100k_effdet/val/' + filenames[i],
                     #                      cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
                     # for label in labels:
                     #     x1, y1, x2, y2 = [int(x) for x in label[:4]]
-                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (255, 0, 0), 1)
                     # for pre in pred:
                     #     x1, y1, x2, y2 = [int(x) for x in pre[:4]]
-                    #     ori_img = cv2.putText(ori_img, str(pre[4].cpu().numpy()), (x1 - 10, y1 - 10),
-                    #                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
-                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    #
-                    # cv2.imwrite('{}.jpg'.format(i), ori_img)
+                    #     # ori_img = cv2.putText(ori_img, str(pre[4].cpu().numpy()), (x1 - 10, y1 - 10),
+                    #     #                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+                    #     ori_img = cv2.rectangle(ori_img, (x1, y1), (x2, y2), (0, 255, 0), 1)
+
+                    # cv2.imwrite('pre+label-{}.jpg'.format(filenames[i]), ori_img)
                     correct = process_batch(pred, labels, iou_thresholds)
                     if plots:
                         confusion_matrix.process_batch(pred, labels)
                 else:
                     correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
                 stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), target_class))
-
 
                 # print(stats)
 
@@ -305,11 +316,12 @@ if __name__ == '__main__':
                 # anh = np.uint8(anh)
                 # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-            for i in range(len(params['seg_list'])+1):
+            for i in range(len(params['seg_list']) + 1):
                 # print(segmentation[:,i,...].unsqueeze(1).size())
-                tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:,i,...].unsqueeze(1).cuda(),
-                                                                        seg_annot[:, i, ...].unsqueeze(1).round().long().cuda(),
-                                                                        mode='binary', threshold=0.5)
+                tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
+                                                                       seg_annot[:, i, ...].unsqueeze(
+                                                                           1).round().long().cuda(),
+                                                                       mode='binary', threshold=0.5)
 
                 iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
                 # print("I", i , iou)
