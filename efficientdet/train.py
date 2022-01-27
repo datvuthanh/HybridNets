@@ -33,6 +33,7 @@ from utils.focal_loss import FocalLoss as FocalLossSeg
 from utils.tversky_loss import TverskyLoss
 from utils.dice_loss_old import DiceLoss as DiceLossOld
 from utils.lovasz_loss import LovaszLoss
+from efficientdet.autoanchor import run_anchor
 
 
 class Params:
@@ -86,17 +87,17 @@ class ModelWithLoss(nn.Module):
         self.criterion = FocalLoss()
         # self.seg_criterion1 = DiceLoss(mode='binary', from_logits=False)
         # self.seg_criterion1 = DiceLossOld()
-        self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0/3, from_logits=False)
+        self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
         # self.seg_criterion1 = LovaszLoss(mode='binary')
         self.seg_criterion2 = FocalLossSeg(mode='multilabel', alpha=0.25)
         self.model = model
         self.debug = debug
 
-    def forward(self, imgs, annotations,seg_annot, obj_list=None):
+    def forward(self, imgs, annotations, seg_annot, obj_list=None):
         _, regression, classification, anchors, segmentation = self.model(imgs)
 
         if self.debug:
-            cls_loss, reg_loss= self.criterion(classification, regression, anchors, annotations,
+            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
             dice_loss = self.seg_criterion1(segmentation, seg_annot)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
@@ -199,12 +200,17 @@ def train(opt):
         collate_fn=AutoDriveDataset.collate_fn
     )
 
+    if cfg.NEED_AUTOANCHOR:
+        params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
+
     pretrainedmodels = EfficientDetBackboneOld(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
+                                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
 
     model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales), seg_classes = len(params.seg_list))
+                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
+                                 seg_classes=len(params.seg_list))
 
+    exit()
     # load last weights
     ckpt = {}
     # last_step = None
@@ -312,7 +318,7 @@ def train(opt):
     epoch = 0
     best_loss = 1e5
     best_epoch = 0
-    last_step = ckpt['step'] if  opt.load_weights is not None and ckpt.get('step', None) else 0
+    last_step = ckpt['step'] if opt.load_weights is not None and ckpt.get('step', None) else 0
     best_fitness = ckpt['best_fitness'] if opt.load_weights is not None and ckpt.get('best_fitness', None) else 0
     step = max(0, last_step)
     model.train()
@@ -343,7 +349,9 @@ def train(opt):
                         seg_annot = seg_annot.cuda().long()
 
                     optimizer.zero_grad()
-                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation= model(imgs, annot, seg_annot,obj_list=params.obj_list)
+                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
+                                                                                                            seg_annot,
+                                                                                                            obj_list=params.obj_list)
                     cls_loss = cls_loss.mean()
                     reg_loss = reg_loss.mean()
                     seg_loss = seg_loss.mean()

@@ -260,4 +260,4 @@ class AutoDriveDataset(Dataset):
 
         # print("ABC", seg1.size())
         return {'img': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
-                'filenames': filenames}
+                'filenames': filenames, 'shapes': shapes}
