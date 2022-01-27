@@ -210,7 +210,6 @@ def train(opt):
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                  seg_classes=len(params.seg_list))
 
-    exit()
     # load last weights
     ckpt = {}
     # last_step = None
