@@ -35,7 +35,9 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         imgs = data['img']
         annot = data['annot']
         seg_annot = data['segmentation']
-        # filenames = data['filenames']
+        filenames = data['filenames']
+        shapes = data['shapes']
+
 
         if params.num_gpus == 1:
             imgs = imgs.cuda()
@@ -55,10 +57,6 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                               classification.detach(),
                               regressBoxes, clipBoxes,
                               0.5, 0.3)
-
-            framed_metas = [[640, 384, 1280, 720, 0, 0] for _ in range(len(out))]
-
-            out = invert_affine(framed_metas, out)
 
             for i in range(annot.size(0)):
                 seen += 1
@@ -82,7 +80,8 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     continue
 
                 if nl:
-                    labels = scale_coords((384, 640), labels, (720, 1280))
+                    pred[:, :4] = scale_coords(imgs[i][1:], pred[:, :4], shapes[i][0], shapes[i][1])
+                    labels = scale_coords(imgs[i][1:], labels, shapes[i][0], shapes[i][1])
                     correct = process_batch(pred, labels, iou_thresholds)
                     if plots:
                         confusion_matrix.process_batch(pred, labels)
