@@ -75,7 +75,7 @@ class EfficientDetBackbone(nn.Module):
                                pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
                                **kwargs)
 
-        self.backbone_net = EfficientNet(self.backbone_compound_coef[compound_coef], load_weights)
+        # self.backbone_net = EfficientNet(self.backbone_compound_coef[compound_coef], load_weights)
 
         self.encoder = get_encoder(
             'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
