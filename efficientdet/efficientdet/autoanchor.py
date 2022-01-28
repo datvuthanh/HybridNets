@@ -21,24 +21,26 @@ def check_anchor_order(anchors, anchor_grid, stride):
 
 
 def run_anchor(logger, dataset, thr=4.0, imgsz=640):
-    default_anchors = [[3, 9, 5, 11, 4, 20], [7, 18, 6, 39, 12, 31], [19, 50, 38, 81, 68, 157]]
-    nl = len(default_anchors)  # number of detection layers 3
-    na = len(default_anchors[0]) // 2  # number of anchors 3
-    anchors = torch.tensor(default_anchors,
-                           device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-                           ).float().view(nl, -1, 2)
-    anchor_num = na * nl
+    # default_anchors = [[3, 9, 5, 11, 4, 20], [7, 18, 6, 39, 12, 31], [19, 50, 38, 81, 68, 157]]
+    # nl = len(default_anchors)  # number of detection layers 3
+    # na = len(default_anchors[0]) // 2  # number of anchors 3
+    # anchors = torch.tensor(default_anchors,
+    #                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    #                        ).float().view(nl, -1, 2)
+    # anchor_num = na * nl
+    anchor_num = 9
     new_anchors = kmean_anchors(dataset, n=anchor_num, img_size=imgsz, thr=thr, gen=1000, verbose=False)
 
     scales = [0, None, None]
     scales[1] = math.log2(np.mean(new_anchors[1::3][:, 0] / new_anchors[0::3][:, 0]))
     scales[2] = math.log2(np.mean(new_anchors[2::3][:, 0] / new_anchors[0::3][:, 0]))
-    scales = [(2 ** x) for x in scales]
+    scales = [round(2 ** x, 2) for x in scales]
 
     normalized_anchors = new_anchors / np.sqrt(new_anchors.prod(axis=1, keepdims=True))
     ratios = [(1.0, 1.0), None, None]
     ratios[1] = (np.mean(normalized_anchors[:, 0]), np.mean(normalized_anchors[:, 1]))
     ratios[2] = (np.mean(normalized_anchors[:, 1]), np.mean(normalized_anchors[:, 0]))
+    ratios = [(round(x, 2), round(y, 2)) for x, y in ratios]
     print("New scales:", scales)
     print("New ratios:", ratios)
     print('New anchors saved to model. Update model config to use these anchors in the future.')
