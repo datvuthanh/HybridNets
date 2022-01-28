@@ -15,6 +15,7 @@ from tensorboardX import SummaryWriter
 from torch import nn
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
+# from torchinfo import summary
 
 from val import val
 from backbone import EfficientDetBackbone
@@ -50,9 +51,12 @@ def get_args():
     parser.add_argument('-c', '--compound_coef', type=int, default=0, help='coefficients of efficientdet')
     parser.add_argument('-n', '--num_workers', type=int, default=12, help='num_workers of dataloader')
     parser.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
-    parser.add_argument('--head_only', type=boolean_string, default=False,
-                        help='whether finetunes only the regressor and the classifier, '
-                             'useful in early stage convergence or small/easy dataset')
+    parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
+                        help='freeze encoder and neck (effnet and bifpn)')
+    parser.add_argument('--freeze_det', type=boolean_string, default=False,
+                        help='freeze detection head')
+    parser.add_argument('--freeze_seg', type=boolean_string, default=False,
+                        help='freeze segmentation head')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--optim', type=str, default='adamw', help='select optimizer for training, '
                                                                    'suggest using \'admaw\' until the'
@@ -267,17 +271,38 @@ def train(opt):
 
     print('[Info] Successfully!!!')
 
-    # freeze backbone if train head_only
-    if opt.head_only:
+    if opt.freeze_backbone:
         def freeze_backbone(m):
             classname = m.__class__.__name__
-            for ntl in ['EfficientNet', 'BiFPN']:
-                if ntl in classname:
-                    for param in m.parameters():
-                        param.requires_grad = False
-
+            if classname in ['EfficientNetEncoder', 'BiFPN']:  # use EfficientNet if original encoder
+                print("[Info] freezing {}".format(classname))
+                for param in m.parameters():
+                    param.requires_grad = False
         model.apply(freeze_backbone)
         print('[Info] freezed backbone')
+
+    if opt.freeze_det:
+        def freeze_det(m):
+            classname = m.__class__.__name__
+            if classname in ['Regressor', 'Classifier', 'Anchors']:
+                print("[Info] freezing {}".format(classname))
+                for param in m.parameters():
+                    param.requires_grad = False
+        model.apply(freeze_det)
+        print('[Info] freezed detection head')
+
+    if opt.freeze_seg:
+        def freeze_seg(m):
+            classname = m.__class__.__name__
+            if classname in ['BiFPNDecoder', 'SegmentationHead']:
+                print("[Info] freezing {}".format(classname))
+                for param in m.parameters():
+                    param.requires_grad = False
+        model.apply(freeze_seg)
+        print('[Info] freezed segmentation head')
+
+    # summary(model, input_size=(1, 3, 384, 640))
+    # exit()
 
     # https://github.com/vacancy/Synchronized-BatchNorm-PyTorch
     # apply sync_bn when using multiple gpu and batch_size per gpu is lower than 4
