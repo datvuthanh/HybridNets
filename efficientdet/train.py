@@ -103,7 +103,7 @@ class ModelWithLoss(nn.Module):
         if self.debug:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
-            dice_loss = self.seg_criterion1(segmentation, seg_annot)
+#             dice_loss = self.seg_criterion1(segmentation, seg_annot)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
         else:
