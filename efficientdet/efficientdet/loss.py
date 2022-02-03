@@ -20,6 +20,7 @@ def calc_iou(a, b):
     ua = torch.clamp(ua, min=1e-8)
     intersection = iw * ih
     IoU = intersection / ua
+   
 
     return IoU
 
@@ -87,27 +88,53 @@ class FocalLoss(nn.Module):
                 continue
 
             IoU = calc_iou(anchor[:, :], bbox_annotation[:, :4])
-
-            # print("IOU", IoU)
-
+            
             IoU_max, IoU_argmax = torch.max(IoU, dim=1)
+           
 
             # compute the loss for classification
-            targets = torch.ones_like(classification) * -1
+            #targets = torch.ones_like(classification) * -1
+            targets = torch.zeros_like(classification)
+            
             if torch.cuda.is_available():
                 targets = targets.cuda()
+            
+            assigned_annotations = bbox_annotation[IoU_argmax, :]
+            
+            positive_indices = torch.full_like(IoU_max,False,dtype=torch.bool) #torch.ge(IoU_max, 0.2) 
+                        
+            tensorA = (assigned_annotations[:, 2] - assigned_annotations[:, 0]) * (assigned_annotations[:, 3] - assigned_annotations[:, 1]) > 10 * 10
+#             for idx,iou in enumerate(IoU_max):
+#                 if tensorA[idx]: # Set iou threshold = 0.5
+#                     if iou >= 0.5:
+#                         positive_indices[idx] = True
+# #                         targets[idx,:] = True
+# #                     else:
+# #                         positive_indices[idx] = False
+#                 else:
+#                     if iou >= 0.15:
+#                         positive_indices[idx] = True
+# #                     else:
+# #                         positive_indices[idx] = False              
+                                
+# #             targets[torch.lt(IoU_max, 0.4), :] = 0
 
-            targets[torch.lt(IoU_max, 0.4), :] = 0
-
-            positive_indices = torch.ge(IoU_max, 0.5)
+            
+            positive_indices[torch.logical_or(torch.logical_and(tensorA,IoU_max >= 0.5),torch.logical_and(~tensorA,IoU_max >= 0.15))] = True
 
             num_positive_anchors = positive_indices.sum()
+            
+#             for box in assigned_annotations[positive_indices, :]:
+#                 xmin,ymin,xmax,ymax, cls = box
+#                 print("WIDTH HEIGHT:", (xmax-xmin),"\t", (ymax-ymin))
+#             for box in bbox_annotation:
+#                 xmin,ymin,xmax,ymax, cls = box
+#                 print("111 WIDTH HEIGHT:", (xmax-xmin),"\t", (ymax-ymin))
+            
 
-            assigned_annotations = bbox_annotation[IoU_argmax, :]
-
-            targets[positive_indices, :] = 0
+#             targets[positive_indices, :] = 0
             targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
-
+    
             alpha_factor = torch.ones_like(targets) * alpha
             if torch.cuda.is_available():
                 alpha_factor = alpha_factor.cuda()
@@ -175,7 +202,7 @@ class FocalLoss(nn.Module):
             out = postprocess(imgs.detach(),
                               torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(), classifications.detach(),
                               regressBoxes, clipBoxes,
-                              0.5, 0.3)
+                              0.25, 0.3)
             imgs = imgs.permute(0, 2, 3, 1).cpu().numpy()
             imgs = ((imgs * [0.229, 0.224, 0.225] + [0.485, 0.456, 0.406]) * 255).astype(np.uint8)
             imgs = [cv2.cvtColor(img, cv2.COLOR_RGB2BGR) for img in imgs]

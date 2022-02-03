@@ -56,7 +56,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                               torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
                               classification.detach(),
                               regressBoxes, clipBoxes,
-                              0.5, 0.3)
+                              0.001, 0.6)  # 0.5, 0.3
 
             for i in range(annot.size(0)):
                 seen += 1
