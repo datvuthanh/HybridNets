@@ -1,4 +1,4 @@
-# FinalProject
+# HybridNets: End2End Perception Network
 
 1) In readme we introduce all features we add 
 2) Share tips for training
