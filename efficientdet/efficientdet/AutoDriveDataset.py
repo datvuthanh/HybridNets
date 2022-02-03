@@ -171,6 +171,16 @@ class AutoDriveDataset(Dataset):
 
                     labels[:, 1] = cols - x2
                     labels[:, 3] = cols - x_tmp
+                
+                # Segmentation
+                seg_label = np.fliplr(seg_label)
+                lane_label = np.fliplr(lane_label)
+                
+#                 cv2.imwrite('img0.jpg',img)
+#                 cv2.imwrite('img1.jpg',seg_label)
+#                 cv2.imwrite('img2.jpg',lane_label)
+                
+#                 exit()
 
             # print(labels)
 
@@ -188,8 +198,6 @@ class AutoDriveDataset(Dataset):
         #   print(x1,y1,x2,y2)
         #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 3)
         # cv2.imwrite(data["image"].split("/")[-1], img)
-
-        # exit()
 
         if len(labels):
             labels_app = np.zeros((len(labels), 5))
