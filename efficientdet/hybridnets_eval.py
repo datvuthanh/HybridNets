@@ -24,8 +24,7 @@ from pycocotools.cocoeval import COCOeval
 
 from efficientdet.utils import BBoxTransform, ClipBoxes
 from utils.utils import preprocess, invert_affine, postprocess, boolean_string, ConfusionMatrix, scale_coords, \
-    process_batch, \
-    ap_per_class, remove_padding, display
+    process_batch, ap_per_class, display
 
 from backbone import EfficientDetBackbone
 from efficientdet.bdd import BddDataset
@@ -239,7 +238,7 @@ if __name__ == '__main__':
                               torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regressions.detach(),
                               classifications.detach(),
                               regressBoxes, clipBoxes,
-                              0.5, 0.3)
+                              0.001, 0.6)  # 0.5, 0.3
 
             # imgs = imgs.permute(0, 2, 3, 1).cpu().numpy()
             # imgs = ((imgs * [0.229, 0.224, 0.225] + [0.485, 0.456, 0.406]) * 255).astype(np.uint8)
