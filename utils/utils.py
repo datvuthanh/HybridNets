@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from prefetch_generator import BackgroundGenerator
 import random
 import itertools
+import yaml
 
 import cv2
 import numpy as np
@@ -686,7 +687,7 @@ class ConfusionMatrix:
 
 
 class BBoxTransform(nn.Module):
-    
+
     def forward(self, anchors, regression):
         y_centers_a = (anchors[..., 0] + anchors[..., 2]) / 2
         x_centers_a = (anchors[..., 1] + anchors[..., 3]) / 2

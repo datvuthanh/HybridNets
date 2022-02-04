@@ -32,9 +32,9 @@ def get_args():
     parser.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
                         help='Freeze encoder and neck (effnet and bifpn)')
-    parser.add_argument('--freFze_det', type=boolean_string, default=False,
+    parser.add_argument('--freeze_det', type=boolean_string, default=False,
                         help='Freeze detection head')
-    parser.add_argument('--freFze_seg', type=boolean_string, default=False,
+    parser.add_argument('--freeze_seg', type=boolean_string, default=False,
                         help='Freeze segmentation head')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--optim', type=str, default='adamw', help='Select optimizer for training, '
@@ -129,7 +129,7 @@ def train(opt):
     train_dataset = BddDataset(
         params=params,
         is_train=True,
-        inputsize=params.model.image_size,
+        inputsize=params.model['image_size'],
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
@@ -150,7 +150,7 @@ def train(opt):
     valid_dataset = BddDataset(
         params=params,
         is_train=False,
-        inputsize=params.model.image_size,
+        inputsize=params.model['image_size'],
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(

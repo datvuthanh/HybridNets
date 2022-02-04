@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 import argparse
-import yaml
 from tqdm.autonotebook import tqdm
+import os
 
 from utils import smp_metrics
 from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
@@ -163,7 +163,8 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
 
         ap50 = None
-        save_dir = 'abc'
+        save_dir = 'plots'
+        os.makedirs(save_dir, exist_ok=True) 
         names = {
             0: 'car'
         }
@@ -374,7 +375,8 @@ def val_from_cmd(model, val_generator, params):
     # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
 
     ap50 = None
-    save_dir = 'abc'
+    save_dir = 'plots'
+    os.makedirs(save_dir, exist_ok=True) 
     names = {
         0: 'car'
     }
@@ -424,7 +426,7 @@ if __name__ == "__main__":
     valid_dataset = BddDataset(
         params=params,
         is_train=False,
-        inputsize=params.model.image_size,
+        inputsize=params.model['image_size'],
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(

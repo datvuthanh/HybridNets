@@ -102,7 +102,7 @@ class HybridNetsBackbone(nn.Module):
 
         return features, regression, classification, anchors, segmentation
     
-    def initialize_decoder(module):
+    def initialize_decoder(self, module):
         for m in module.modules():
 
             if isinstance(m, nn.Conv2d):
@@ -120,7 +120,7 @@ class HybridNetsBackbone(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
 
-    def initialize_head(module):
+    def initialize_head(self, module):
         for m in module.modules():
             if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.xavier_uniform_(m.weight)
