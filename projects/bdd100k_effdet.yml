@@ -37,4 +37,32 @@ obj_list: ['car']
 
 seg_list: ['road',
           'lane']
-#seg_list: ['lane']
+
+DATASET:
+  COLOR_RGB: false
+  DATAROOT: ./datasets/bdd100k_effdet
+  LABELROOT: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
+  LANEROOT: ./datasets/bdd_lane_gt
+  MASKROOT: ./datasets/bdd_seg_gt
+  DATASET: BddDataset
+  DATA_FORMAT: jpg
+  FLIP: true
+  HSV_H: 0.015
+  HSV_S: 0.7
+  HSV_V: 0.4
+  ORG_IMG_SIZE:
+  - 720
+  - 1280
+  ROT_FACTOR: 10
+  SCALE_FACTOR: 0.25
+  SHEAR: 0.0
+  TEST_SET: val
+  TRAIN_SET: train
+  TRANSLATE: 0.1
+MODEL:
+  IMAGE_SIZE:
+  - 640
+  - 384
+NEED_AUTOANCHOR: false
+PIN_MEMORY: false
+num_seg_class: 2

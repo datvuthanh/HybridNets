@@ -1,22 +1,16 @@
 import torch
 import numpy as np
-import os
 import argparse
 import yaml
 from tqdm.autonotebook import tqdm
-from pathlib import Path
 
 from utils import smp_metrics
-from efficientdet.utils import BBoxTransform, ClipBoxes
-from utils.utils import ConfusionMatrix, preprocess, postprocess, invert_affine, scale_coords, process_batch, ap_per_class, fitness, \
-    save_checkpoint, boolean_string, display
+from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
+    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes
 from backbone import EfficientDetBackbone
-from efficientdet.bdd import BddDataset
-from efficientdet.AutoDriveDataset import AutoDriveDataset
-from efficientdet.yolop_cfg import update_config
-from efficientdet.yolop_cfg import _C as cfg
-from efficientdet.yolop_utils import DataLoaderX
+from efficientdet.dataset import BddDataset
 from torchvision import transforms
+from utils.utils import Params
 
 
 @torch.no_grad()
@@ -236,9 +230,6 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
 @torch.no_grad()
 def val_from_cmd(model, val_generator, params):
     model.eval()
-    loss_regression_ls = []
-    loss_classification_ls = []
-    loss_segmentation_ls = []
     jdict, stats, ap, ap_class = [], [], [], []
     iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
     num_thresholds = iou_thresholds.numel()
@@ -263,7 +254,7 @@ def val_from_cmd(model, val_generator, params):
         shapes = data['shapes']
 
 
-        if params['num_gpus'] == 1:
+        if params.num_gpus == 1:
             imgs = imgs.cuda()
             annot = annot.cuda()
             seg_annot = seg_annot.cuda()
@@ -351,7 +342,7 @@ def val_from_cmd(model, val_generator, params):
             # anh = np.uint8(anh)
             # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-        for i in range(len(params['seg_list']) + 1):
+        for i in range(len(params.seg_list) + 1):
             # print(segmentation[:,i,...].unsqueeze(1).size())
             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
                                                                     seg_annot[:, i, ...].unsqueeze(
@@ -371,7 +362,7 @@ def val_from_cmd(model, val_generator, params):
     # print(iou_score)
     f1_score = np.mean(f1_ls)
 
-    for i in range(len(params['seg_list']) + 1):
+    for i in range(len(params.seg_list) + 1):
         iou_ls[i] = np.mean(iou_ls[i])
         f1_ls[i] = np.mean(f1_ls[i])
 
@@ -420,20 +411,20 @@ if __name__ == "__main__":
     ap.add_argument('-p', '--project', type=str, default='coco', help='project file that contains parameters')
     ap.add_argument('-c', '--compound_coef', type=int, default=0, help='coefficients of efficientdet')
     ap.add_argument('-w', '--weights', type=str, default=None, help='/path/to/weights')
+    ap.add_argument('-n', '--num_workers', type=int, default=12, help='num_workers of dataloader')
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
     project_name = args.project
     weights_path = f'weights/efficientdet-d{compound_coef}.pth' if args.weights is None else args.weights
 
-    params = yaml.safe_load(open(f'projects/{project_name}.yml'))
-    obj_list = params['obj_list']
-    print(params)
+    params = Params(f'projects/{project_name}.yml')
+    obj_list = params.obj_list
 
     valid_dataset = BddDataset(
-        cfg=cfg,
+        params=params,
         is_train=False,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
+        inputsize=params.model.image_size,
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
@@ -446,14 +437,14 @@ if __name__ == "__main__":
         valid_dataset,
         batch_size=2,
         shuffle=False,
-        num_workers=cfg.WORKERS,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=AutoDriveDataset.collate_fn
+        num_workers=args.num_workers,
+        pin_memory=params.pin_memory,
+        collate_fn=BddDataset.collate_fn
     )
 
-    model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(params['obj_list']),
-                                     ratios=eval(params['anchors_ratios']), scales=eval(params['anchors_scales']),
-                                     seg_classes=len(params['seg_list']))
+    model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
+                                     ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
+                                     seg_classes=len(params.seg_list))
     try:
         model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
     except:
