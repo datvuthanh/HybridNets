@@ -1,12 +1,7 @@
-# original author: signatrix
-# adapted from https://github.com/signatrix/efficientdet/blob/master/train.py
-# modified by Zylo117
-
 import argparse
 import datetime
 import os
 import traceback
-import gc
 
 import numpy as np
 import torch
@@ -18,47 +13,31 @@ from tqdm.autonotebook import tqdm
 # from torchinfo import summary
 
 from val import val
-from backbone import EfficientDetBackbone
-from backbone_old import EfficientDetBackbone as EfficientDetBackboneOld
-from efficientdet.loss import FocalLoss
+from backbone import HybridNetsBackbone
+from hybridnets.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
-    save_checkpoint
-from efficientdet.bdd import BddDataset
-from efficientdet.AutoDriveDataset import AutoDriveDataset
-from efficientdet.yolop_cfg import update_config
-from efficientdet.yolop_cfg import _C as cfg
-from efficientdet.yolop_utils import DataLoaderX
-from utils.dice_loss import DiceLoss
-from utils.focal_loss import FocalLoss as FocalLossSeg
-from utils.tversky_loss import TverskyLoss
-from utils.dice_loss_old import DiceLoss as DiceLossOld
-from utils.lovasz_loss import LovaszLoss
-from efficientdet.autoanchor import run_anchor
-
-
-class Params:
-    def __init__(self, project_file):
-        self.params = yaml.safe_load(open(project_file).read())
-
-    def __getattr__(self, item):
-        return self.params.get(item, None)
+    save_checkpoint, DataLoaderX
+from hybridnets.dataset import BddDataset
+from hybridnets.loss import FocalLossSeg, TverskyLoss
+from hybridnets.autoanchor import run_anchor
+from utils.utils import Params
 
 
 def get_args():
-    parser = argparse.ArgumentParser('Yet Another EfficientDet Pytorch: SOTA object detection network - Zylo117')
-    parser.add_argument('-p', '--project', type=str, default='coco', help='project file that contains parameters')
-    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='coefficients of efficientdet')
-    parser.add_argument('-n', '--num_workers', type=int, default=12, help='num_workers of dataloader')
+    parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
+    parser.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
+    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
+    parser.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
     parser.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
-                        help='freeze encoder and neck (effnet and bifpn)')
+                        help='Freeze encoder and neck (effnet and bifpn)')
     parser.add_argument('--freeze_det', type=boolean_string, default=False,
-                        help='freeze detection head')
+                        help='Freeze detection head')
     parser.add_argument('--freeze_seg', type=boolean_string, default=False,
-                        help='freeze segmentation head')
+                        help='Freeze segmentation head')
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--optim', type=str, default='adamw', help='select optimizer for training, '
+    parser.add_argument('--optim', type=str, default='adamw', help='Select optimizer for training, '
                                                                    'suggest using \'admaw\' until the'
                                                                    ' very final stage then switch to \'sgd\'')
     parser.add_argument('--num_epochs', type=int, default=500)
@@ -68,18 +47,16 @@ def get_args():
                         help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')
     parser.add_argument('--es_patience', type=int, default=0,
                         help='Early stopping\'s parameter: number of epochs with no improvement after which training will be stopped. Set to 0 to disable this technique.')
-    parser.add_argument('--data_path', type=str, default='datasets/', help='the root folder of dataset')
+    parser.add_argument('--data_path', type=str, default='datasets/', help='The root folder of dataset')
     parser.add_argument('--log_path', type=str, default='checkpoints/')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
-                        help='whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
+                        help='Whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
     parser.add_argument('--saved_path', type=str, default='checkpoints/')
     parser.add_argument('--debug', type=boolean_string, default=False,
-                        help='whether visualize the predicted boxes of training, '
+                        help='Whether visualize the predicted boxes of training, '
                              'the output images will be in test/')
-    parser.add_argument('--is_transfer', type=boolean_string, default=True,
-                        help='transfer learning from pretrained effdet')
     parser.add_argument('--cal_map', type=boolean_string, default=True,
-                        help='calculate map in validation')
+                        help='Calculate map in validation')
 
     args = parser.parse_args()
     return args
@@ -89,10 +66,7 @@ class ModelWithLoss(nn.Module):
     def __init__(self, model, debug=False):
         super().__init__()
         self.criterion = FocalLoss()
-        # self.seg_criterion1 = DiceLoss(mode='binary', from_logits=False)
-        # self.seg_criterion1 = DiceLossOld()
         self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
-        # self.seg_criterion1 = LovaszLoss(mode='binary')
         self.seg_criterion2 = FocalLossSeg(mode='multilabel', alpha=0.25)
         self.model = model
         self.debug = debug
@@ -103,16 +77,12 @@ class ModelWithLoss(nn.Module):
         if self.debug:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
                                                 imgs=imgs, obj_list=obj_list)
-#             dice_loss = self.seg_criterion1(segmentation, seg_annot)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
         else:
             cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
-            # Calculate segmentation loss
-            # dice_loss = self.seg_criterion1(segmentation, seg_annot)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
-            # lovasz_loss = self.seg_criterion1(segmentation, seg_annot)
 
             # Visualization
             # seg_0 = seg_annot[0]
@@ -134,8 +104,7 @@ class ModelWithLoss(nn.Module):
             # cv2.imwrite('anh.jpg',anh)
 
         seg_loss = tversky_loss + 1 * focal_loss
-        # seg_loss = lovasz_loss
-        # print("DICE", dice_loss)
+        # print("TVERSKY", tversky_loss)
         # print("FOCAL", focal_loss)
 
         return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
@@ -143,11 +112,6 @@ class ModelWithLoss(nn.Module):
 
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
-    update_config(cfg, opt)
-
-    # use all in environment
-    params.num_gpus = torch.cuda.device_count()
-    print("Using {} GPUS".format(params.num_gpus))
 
     if params.num_gpus == 0:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -163,9 +127,9 @@ def train(opt):
     os.makedirs(opt.saved_path, exist_ok=True)
 
     train_dataset = BddDataset(
-        cfg=cfg,
+        params=params,
         is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
+        inputsize=params.model['image_size'],
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
@@ -179,14 +143,14 @@ def train(opt):
         batch_size=opt.batch_size,
         shuffle=True,
         num_workers=opt.num_workers,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=AutoDriveDataset.collate_fn
+        pin_memory=params.pin_memory,
+        collate_fn=BddDataset.collate_fn
     )
 
     valid_dataset = BddDataset(
-        cfg=cfg,
+        params=params,
         is_train=False,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
+        inputsize=params.model['image_size'],
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
@@ -200,54 +164,21 @@ def train(opt):
         batch_size=opt.batch_size,
         shuffle=False,
         num_workers=opt.num_workers,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=AutoDriveDataset.collate_fn
+        pin_memory=params.pin_memory,
+        collate_fn=BddDataset.collate_fn
     )
 
-    if cfg.NEED_AUTOANCHOR:
+    if params.need_autoanchor:
         params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
 
-    pretrainedmodels = EfficientDetBackboneOld(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-                                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales))
-
-    model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
+    model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                  seg_classes=len(params.seg_list))
 
     # load last weights
     ckpt = {}
     # last_step = None
-    if opt.load_weights is not None and opt.is_transfer:
-        if opt.load_weights.endswith('.pth'):
-            weights_path = opt.load_weights
-        else:
-            weights_path = get_last_weights(opt.saved_path)
-        # try:
-        #     last_step = int(os.path.basename(weights_path).split('_')[-1].split('.')[0])
-        # except:
-        #     last_step = 0
-
-        try:
-            ret = pretrainedmodels.load_state_dict(torch.load(weights_path), strict=False)
-        except RuntimeError as e:
-            print(f'[Warning] Ignoring {e}')
-            print(
-                '[Warning] Don\'t panic if you see this, this might be because you load a pretrained weights with different number of classes. The rest of the weights should be loaded already.')
-
-        print(f'[Info] loaded weights: {os.path.basename(weights_path)}')
-
-        print('[Info] Load a part of weights from pretrained models')
-
-        params1 = pretrainedmodels.state_dict()
-        params2 = model.state_dict()
-
-        dict_params1 = dict(params1)
-        dict_params2 = dict(params2)
-
-        pretrained_dict = {k: v for k, v in dict_params1.items() if k in dict_params2}
-        dict_params2.update(pretrained_dict)
-        model.load_state_dict(dict_params2)
-    elif opt.load_weights is not None and not opt.is_transfer:
+    if opt.load_weights:
         if opt.load_weights.endswith('.pth'):
             weights_path = opt.load_weights
         else:
@@ -260,7 +191,6 @@ def train(opt):
         try:
             ckpt = torch.load(weights_path)
             model.load_state_dict(ckpt.get('model', ckpt), strict=False)
-
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
             print(
@@ -274,7 +204,7 @@ def train(opt):
     if opt.freeze_backbone:
         def freeze_backbone(m):
             classname = m.__class__.__name__
-            if classname in ['EfficientNetEncoder', 'BiFPN']:  # use EfficientNet if original encoder
+            if classname in ['EfficientNetEncoder', 'BiFPN']:  # replace backbone classname when using another backbone
                 print("[Info] freezing {}".format(classname))
                 for param in m.parameters():
                     param.requires_grad = False
@@ -406,7 +336,7 @@ def train(opt):
                     step += 1
 
                     if step % opt.save_interval == 0 and step > 0:
-                        save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+                        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
                 except Exception as e:
@@ -420,7 +350,7 @@ def train(opt):
                 best_fitness, best_loss, best_epoch = val(model, optimizer, val_generator, params, opt, writer, epoch,
                                                           step, best_fitness, best_loss, best_epoch)
     except KeyboardInterrupt:
-        # save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+        # save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
         writer.close()
     writer.close()
 

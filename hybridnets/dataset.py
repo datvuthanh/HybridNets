@@ -6,65 +6,148 @@ import torch
 import torchvision.transforms as transforms
 from pathlib import Path
 from torch.utils.data import Dataset
-from .yolop_utils import letterbox, augment_hsv, random_perspective
+from utils.utils import letterbox, augment_hsv, random_perspective
+from tqdm.notebook import tqdm
+import json
 
 
-class AutoDriveDataset(Dataset):
-    """
-    A general Dataset for some common function
-    """
-
-    def __init__(self, cfg, is_train, inputsize=640, transform=None):
+class BddDataset(Dataset):
+    def __init__(self, params, is_train, inputsize=640, transform=None):
         """
         initial all the characteristic
 
         Inputs:
-        -cfg: configurations
+        -params: configuration parameters
         -is_train(bool): whether train set or not
         -transform: ToTensor and Normalize
 
         Returns:
         None
         """
+        self.single_cls = True  # just detect vehicle
         self.is_train = is_train
-        self.cfg = cfg
+        self.params = params
         self.transform = transform
         self.inputsize = inputsize
         self.Tensor = transforms.ToTensor()
-        img_root = Path(cfg.DATASET.DATAROOT)
-        label_root = Path(cfg.DATASET.LABELROOT)
-        mask_root = Path(cfg.DATASET.MASKROOT)
-        lane_root = Path(cfg.DATASET.LANEROOT)
+        img_root = Path(params.dataset['dataroot'])
+        label_root = Path(params.dataset['labelroot'])
+        mask_root = Path(params.dataset['maskroot'])
+        lane_root = Path(params.dataset['laneroot'])
         if is_train:
-            indicator = cfg.DATASET.TRAIN_SET
+            indicator = params.dataset['train_set']
         else:
-            indicator = cfg.DATASET.TEST_SET
+            indicator = params.dataset['test_set']
         self.img_root = img_root / indicator
         self.label_root = label_root / indicator
         self.mask_root = mask_root / indicator
         self.lane_root = lane_root / indicator
         # self.label_list = self.label_root.iterdir()
         self.mask_list = self.mask_root.iterdir()
+        self.data_format = params.dataset['data_format']
+        self.scale_factor = params.dataset['scale_factor']
+        self.rotation_factor = params.dataset['rot_factor']
+        self.flip = params.dataset['flip']
+        self.color_rgb = params.dataset['color_rgb']
 
-        self.db = []
+        # bdd_labels = {
+        # 'unlabeled':0, 'dynamic': 1, 'ego vehicle': 2, 'ground': 3,
+        # 'static': 4, 'parking': 5, 'rail track': 6, 'road': 7,
+        # 'sidewalk': 8, 'bridge': 9, 'building': 10, 'fence': 11,
+        # 'garage': 12, 'guard rail': 13, 'tunnel': 14, 'wall': 15,
+        # 'banner': 16, 'billboard': 17, 'lane divider': 18,'parking sign': 19,
+        # 'pole': 20, 'polegroup': 21, 'street light': 22, 'traffic cone': 23,
+        # 'traffic device': 24, 'traffic light': 25, 'traffic sign': 26, 'traffic sign frame': 27,
+        # 'terrain': 28, 'vegetation': 29, 'sky': 30, 'person': 31,
+        # 'rider': 32, 'bicycle': 33, 'bus': 34, 'car': 35,
+        # 'caravan': 36, 'motorcycle': 37, 'trailer': 38, 'train': 39,
+        # 'truck': 40
+        # }
+        self.id_dict = {'person': 0, 'rider': 1, 'car': 2, 'bus': 3, 'truck': 4,
+                'bike': 5, 'motor': 6, 'tl_green': 7, 'tl_red': 8,
+                'tl_yellow': 9, 'tl_none': 10, 'traffic sign': 11, 'train': 12}
+        self.id_dict_single = {'car': 0, 'bus': 1, 'truck': 2, 'train': 3}
+        # id_dict = {'car': 0, 'bus': 1, 'truck': 2}
 
-        self.data_format = cfg.DATASET.DATA_FORMAT
-
-        self.scale_factor = cfg.DATASET.SCALE_FACTOR
-        self.rotation_factor = cfg.DATASET.ROT_FACTOR
-        self.flip = cfg.DATASET.FLIP
-        self.color_rgb = cfg.DATASET.COLOR_RGB
-
-        # self.target_type = cfg.MODEL.TARGET_TYPE
-        self.shapes = np.array(cfg.DATASET.ORG_IMG_SIZE)
+        self.shapes = np.array(params.dataset['org_img_size'])
+        self.db = self._get_db()
 
     def _get_db(self):
         """
-        finished on children Dataset(for dataset which is not in Bdd100k format, rewrite children Dataset)
-        """
-        raise NotImplementedError
+        get database from the annotation file
 
-    def evaluate(self, cfg, preds, output_dir):
+        Inputs:
+
+        Returns:
+        gt_db: (list)database   [a,b,c,...]
+                a: (dictionary){'image':, 'information':, ......}
+        image: image path
+        mask: path of the segmetation label
+        label: [cls_id, center_x//256, center_y//256, w//256, h//256] 256=IMAGE_SIZE
+        """
+        print('building database...')
+        gt_db = []
+        height, width = self.shapes
+        for mask in tqdm(list(self.mask_list)):
+            mask_path = str(mask)
+            label_path = mask_path.replace(str(self.mask_root), str(self.label_root)).replace(".png", ".json")
+            image_path = mask_path.replace(str(self.mask_root), str(self.img_root)).replace(".png", ".jpg")
+            lane_path = mask_path.replace(str(self.mask_root), str(self.lane_root))
+            with open(label_path, 'r') as f:
+                label = json.load(f)
+            data = label['frames'][0]['objects']
+            data = self.select_data(data)
+            gt = np.zeros((len(data), 5))
+            for idx, obj in enumerate(data):
+                category = obj['category']
+                if category == "traffic light":
+                    color = obj['attributes']['trafficLightColor']
+                    category = "tl_" + color
+                if category in self.id_dict.keys():
+                    x1 = float(obj['box2d']['x1'])
+                    y1 = float(obj['box2d']['y1'])
+                    x2 = float(obj['box2d']['x2'])
+                    y2 = float(obj['box2d']['y2'])
+                    cls_id = self.id_dict[category]
+                    if self.single_cls:
+                        cls_id = 0
+                    gt[idx][0] = cls_id
+                    box = self.convert((width, height), (x1, x2, y1, y2))
+                    gt[idx][1:] = list(box)
+
+            rec = [{
+                'image': image_path,
+                'label': gt,
+                'mask': mask_path,
+                'lane': lane_path
+            }]
+
+            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
+            # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            # for label in gt:
+            #     # print(label[1])
+            #     x1 = label[1] - label[3] / 2
+            #     x1 *= 1280
+            #     x1 = int(x1)
+            #     # print(x1)
+            #     x2 = label[1] + label[3] / 2
+            #     x2 *= 1280
+            #     x2 = int(x2)
+            #     y1 = label[2] - label[4] / 2
+            #     y1 *= 720
+            #     y1 = int(y1)
+            #     y2 = label[2] + label[4] / 2
+            #     y2 *= 720
+            #     y2 = int(y2)
+            #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
+
+            gt_db += rec
+        print('database build finish')
+        return gt_db
+
+
+    def evaluate(self, params, preds, output_dir):
         """
         finished on children dataset
         """
@@ -98,7 +181,7 @@ class AutoDriveDataset(Dataset):
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.cfg.num_seg_class == 3:
+        if self.params.num_seg_class == 3:
             seg_label = cv2.imread(data["mask"])
         else:
             seg_label = cv2.imread(data["mask"], 0)
@@ -147,13 +230,13 @@ class AutoDriveDataset(Dataset):
             (img, seg_label, lane_label), labels = random_perspective(
                 combination=combination,
                 targets=labels,
-                degrees=self.cfg.DATASET.ROT_FACTOR,
-                translate=self.cfg.DATASET.TRANSLATE,
-                scale=self.cfg.DATASET.SCALE_FACTOR,
-                shear=self.cfg.DATASET.SHEAR
+                degrees=self.params.dataset['rot_factor'],
+                translate=self.params.dataset['translate'],
+                scale=self.params.dataset['scale_factor'],
+                shear=self.params.dataset['shear']
             )
 #             print(labels.shape)
-            augment_hsv(img, hgain=self.cfg.DATASET.HSV_H, sgain=self.cfg.DATASET.HSV_S, vgain=self.cfg.DATASET.HSV_V)
+            augment_hsv(img, hgain=self.params.dataset['hsv_h'], sgain=self.params.dataset['hsv_s'], vgain=self.params.dataset['hsv_v'])
 #             img, seg_label, labels = cutout(combination=combination, labels=labels)
 
             # random left-right flip
@@ -191,7 +274,15 @@ class AutoDriveDataset(Dataset):
                 seg_label = np.filpud(seg_label)
                 lane_label = np.filpud(lane_label)
                 if len(labels):
-                    labels[:, 2] = 1 - labels[:, 2]
+                    rows, cols, channels = img.shape
+
+                    y1 = labels[:, 2].copy()
+                    y2 = labels[:, 4].copy()
+
+                    y_tmp = y1.copy()
+
+                    labels[:, 2] = rows - y2
+                    labels[:, 4] = rows - y_tmp
 
         # for anno in labels:
         #   x1, y1, x2, y2 = [int(x) for x in anno[1:5]]
@@ -248,9 +339,29 @@ class AutoDriveDataset(Dataset):
         Returns:
         -db_selected: (list)filtered dataset
         """
-        db_selected = ...
-        return db_selected
+        remain = []
+        for obj in db:
+            if 'box2d' in obj.keys():  # obj.has_key('box2d'):
+                if self.single_cls:
+                    if obj['category'] in self.id_dict_single.keys():
+                        remain.append(obj)
+                else:
+                    remain.append(obj)
+        return remain
 
+    def convert(self, size, box):
+            dw = 1. / (size[0])
+            dh = 1. / (size[1])
+            x = (box[0] + box[1]) / 2.0
+            y = (box[2] + box[3]) / 2.0
+            w = box[1] - box[0]
+            h = box[3] - box[2]
+            x = x * dw
+            w = w * dw
+            y = y * dh
+            h = h * dh
+            return x, y, w, h
+        
     @staticmethod
     def collate_fn(batch):
         img, paths, shapes, labels_app, segmentation = zip(*batch)

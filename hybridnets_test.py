@@ -1,27 +1,17 @@
-# Author: Zylo117
-
-"""
-Simple Inference Script of EfficientDet-Pytorch
-"""
 import time
 import torch
 from torch.backends import cudnn
 from matplotlib import colors
-
-from backbone import EfficientDetBackbone
+from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
-import os
 import glob
-
-from efficientdet.utils import BBoxTransform, ClipBoxes
-from utils.utils import preprocess, invert_affine, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
+from utils.utils import preprocess, invert_affine, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box, BBoxTransform, ClipBoxes
 
 compound_coef = 3
 force_input_size = None  # set None to use default size
 img_path = [path for path in glob.glob('./demo_imgs/*.jpg')]
-print(img_path)
-img_path = [img_path[0]]
+img_path = [img_path[0]]  # demo with 1 image
 
 # replace this part with your project's anchor config
 anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
@@ -34,17 +24,6 @@ use_cuda = True
 use_float16 = False
 cudnn.fastest = True
 cudnn.benchmark = True
-
-# obj_list = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
-#             'fire hydrant', '', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep',
-#             'cow', 'elephant', 'bear', 'zebra', 'giraffe', '', 'backpack', 'umbrella', '', '', 'handbag', 'tie',
-#             'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-#             'skateboard', 'surfboard', 'tennis racket', 'bottle', '', 'wine glass', 'cup', 'fork', 'knife', 'spoon',
-#             'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut',
-#             'cake', 'chair', 'couch', 'potted plant', 'bed', '', 'dining table', '', '', 'toilet', '', 'tv',
-#             'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-#             'refrigerator', '', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
-#             'toothbrush']
 
 obj_list= ['car']
 
@@ -64,8 +43,8 @@ else:
 x = x.to(torch.float32 if not use_float16 else torch.float16).permute(0, 3, 1, 2)
 print(x.shape)
 
-model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
-                             ratios=anchor_ratios, scales=anchor_scales, seg_classes =2)
+model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
+                             ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
     model.load_state_dict(torch.load('weights/weight97.pth', map_location='cpu'))
 except:
@@ -85,7 +64,7 @@ with torch.no_grad():
     # print(ori_img.size())
     # ratio = 640 / 1280
     # da_predict = seg[:, :, 0:(720 - 0), 0:(1280 - 0)]
-    print(seg.shape)
+    # print(seg.shape)
 
     # print(da_predict.shape)
     da_seg_mask = torch.nn.functional.interpolate(seg, size = [720,1280], mode='bilinear')
@@ -95,10 +74,10 @@ with torch.no_grad():
 
     # seg = torch.rand((1, 384, 640))
     # da_seg_mask = Activation('sigmoid')(da_seg_mask)
-    print(da_seg_mask.shape)
+    # print(da_seg_mask.shape)
     color_mask_ls = []
     for i in range(da_seg_mask.size(0)):
-      print(i)
+    #   print(i)
       da_seg_mask_ = da_seg_mask[i].squeeze().cpu().numpy().round()
       # da_seg_mask = torch.argmax(da_seg_mask, dim = 0)
       # da_seg_mask[da_seg_mask < 0.5] = 0
@@ -113,7 +92,7 @@ with torch.no_grad():
       color_area[da_seg_mask_ == 2] = [0, 0, 255]
 
       color_seg = color_area[..., ::-1]
-      print(color_seg.shape)
+    #   print(color_seg.shape)
 
       cv2.imwrite('seg_only_{}.jpg'.format(i),color_seg)
 
@@ -123,7 +102,7 @@ with torch.no_grad():
       # # print(color_seg.shape)
       color_mask = np.mean(color_seg, 2)
       ori_img = ori_imgs[i]
-      print(ori_img.shape)
+    #   print(ori_img.shape)
       # ori_img = cv2.resize(ori_img, (1280, 768), interpolation=cv2.INTER_LINEAR)
       ori_img[color_mask != 0] = ori_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
       # img = img * 0.5 + color_seg * 0.5
@@ -170,7 +149,7 @@ def display(preds, imgs, imshow=True, imwrite=False):
 
         if imwrite:
             # print('inside')
-            cv2.imwrite(f'test/img_inferred_d{compound_coef}_this_repo_{i}.jpg', imgs[i])
+            cv2.imwrite(f'test/{i}.jpg', imgs[i])
 
 
 out = invert_affine(framed_metas, out)

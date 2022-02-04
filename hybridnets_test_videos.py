@@ -1,23 +1,19 @@
-# Core Author: Zylo117
-# Script's Author: winter2897 
-
-"""
-Simple Inference Script of EfficientDet-Pytorch for detecting objects on webcam
-"""
-import time
 import torch
 import cv2
 import numpy as np
 from torch.backends import cudnn
-from backbone import EfficientDetBackbone
-from efficientdet.utils import BBoxTransform, ClipBoxes
-from utils.utils import preprocess, invert_affine, postprocess, preprocess_video
+from backbone import HybridNetsBackbone
+from utils.utils import invert_affine, postprocess, preprocess_video, BBoxTransform, ClipBoxes
 
 # Video's path
 video_src = 'videotest.mp4'  # set int to use webcam, set str to read from a video file
 
 compound_coef = 0
 force_input_size = None  # set None to use default size
+
+# replace this part with your project's anchor config
+anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
+anchor_scales = [2**0, 2**0.70, 2**1.32]
 
 threshold = 0.2
 iou_threshold = 0.2
@@ -27,24 +23,16 @@ use_float16 = False
 cudnn.fastest = True
 cudnn.benchmark = True
 
-obj_list = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
-            'fire hydrant', '', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep',
-            'cow', 'elephant', 'bear', 'zebra', 'giraffe', '', 'backpack', 'umbrella', '', '', 'handbag', 'tie',
-            'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-            'skateboard', 'surfboard', 'tennis racket', 'bottle', '', 'wine glass', 'cup', 'fork', 'knife', 'spoon',
-            'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut',
-            'cake', 'chair', 'couch', 'potted plant', 'bed', '', 'dining table', '', '', 'toilet', '', 'tv',
-            'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
-            'refrigerator', '', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
-            'toothbrush']
+obj_list = ['car']
 
 # tf bilinear interpolation is different from any other's, just make do
 input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
 input_size = input_sizes[compound_coef] if force_input_size is None else force_input_size
 
 # load model
-model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(obj_list))
-model.load_state_dict(torch.load(f'weights/efficientdet-d{compound_coef}.pth'))
+model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
+                             ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
+model.load_state_dict(torch.load(f'weights/weight.pth'))
 model.requires_grad_(False)
 model.eval()
 

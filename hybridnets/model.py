@@ -1,11 +1,9 @@
 import torch.nn as nn
 import torch
 from torchvision.ops.boxes import nms as nms_torch
-
-from efficientnet import EfficientNet as EffNet
-from efficientnet.utils import MemoryEfficientSwish, Swish
-from efficientnet.utils_extra import Conv2dStaticSamePadding, MaxPool2dStaticSamePadding
 import torch.nn.functional as F
+import math
+from functools import partial
 
 
 def nms(dets, thresh):
@@ -13,10 +11,6 @@ def nms(dets, thresh):
 
 
 class SeparableConvBlock(nn.Module):
-    """
-    created by Zylo117
-    """
-
     def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
@@ -54,10 +48,6 @@ class SeparableConvBlock(nn.Module):
 
 
 class BiFPN(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True,
                  use_p8=False):
         """
@@ -342,10 +332,6 @@ class BiFPN(nn.Module):
 
 
 class Regressor(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, in_channels, num_anchors, num_layers, pyramid_levels=5, onnx_export=False):
         super(Regressor, self).__init__()
         self.num_layers = num_layers
@@ -534,10 +520,6 @@ class BiFPNDecoder(nn.Module):
 #     return out
 
 class Classifier(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, in_channels, num_anchors, num_classes, num_layers, pyramid_levels=5, onnx_export=False):
         super(Classifier, self).__init__()
         self.num_anchors = num_anchors
@@ -573,44 +555,292 @@ class Classifier(nn.Module):
         return feats
 
 
-class EfficientNet(nn.Module):
-    """
-    modified by Zylo117
-    """
+class SwishImplementation(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, i):
+        result = i * torch.sigmoid(i)
+        ctx.save_for_backward(i)
+        return result
 
-    def __init__(self, compound_coef, load_weights=False):
-        super(EfficientNet, self).__init__()
-        model = EffNet.from_pretrained(f'efficientnet-b{compound_coef}', load_weights)
-        del model._conv_head
-        del model._bn1
-        del model._avg_pooling
-        del model._dropout
-        del model._fc
-        self.model = model
+    @staticmethod
+    def backward(ctx, grad_output):
+        i = ctx.saved_variables[0]
+        sigmoid_i = torch.sigmoid(i)
+        return grad_output * (sigmoid_i * (1 + i * (1 - sigmoid_i)))
+
+
+class MemoryEfficientSwish(nn.Module):
+    def forward(self, x):
+        return SwishImplementation.apply(x)
+
+
+class Swish(nn.Module):
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+
+def drop_connect(inputs, p, training):
+    """ Drop connect. """
+    if not training: return inputs
+    batch_size = inputs.shape[0]
+    keep_prob = 1 - p
+    random_tensor = keep_prob
+    random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=inputs.dtype, device=inputs.device)
+    binary_tensor = torch.floor(random_tensor)
+    output = inputs / keep_prob * binary_tensor
+    return output
+
+
+def get_same_padding_conv2d(image_size=None):
+    """ Chooses static padding if you have specified an image size, and dynamic padding otherwise.
+        Static padding is necessary for ONNX exporting of models. """
+    if image_size is None:
+        return Conv2dDynamicSamePadding
+    else:
+        return partial(Conv2dStaticSamePadding, image_size=image_size)
+
+
+class Conv2dDynamicSamePadding(nn.Conv2d):
+    """ 2D Convolutions like TensorFlow, for a dynamic image size """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
+        super().__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
+        self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
 
     def forward(self, x):
-        x = self.model._conv_stem(x)
-        x = self.model._bn0(x)
-        x = self.model._swish(x)
-        feature_maps = []
+        ih, iw = x.size()[-2:]
+        kh, kw = self.weight.size()[-2:]
+        sh, sw = self.stride
+        oh, ow = math.ceil(ih / sh), math.ceil(iw / sw)
+        pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
+        pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
+        return F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
 
-        # TODO: temporarily storing extra tensor last_x and del it later might not be a good idea,
-        #  try recording stride changing when creating efficientnet,
-        #  and then apply it here.
-        last_x = None
-        for idx, block in enumerate(self.model._blocks):
-            drop_connect_rate = self.model._global_params.drop_connect_rate
+
+class MBConvBlock(nn.Module):
+    """
+    Mobile Inverted Residual Bottleneck Block
+
+    Args:
+        block_args (namedtuple): BlockArgs, see above
+        global_params (namedtuple): GlobalParam, see above
+
+    Attributes:
+        has_se (bool): Whether the block contains a Squeeze and Excitation layer.
+    """
+
+    def __init__(self, block_args, global_params):
+        super().__init__()
+        self._block_args = block_args
+        self._bn_mom = 1 - global_params.batch_norm_momentum
+        self._bn_eps = global_params.batch_norm_epsilon
+        self.has_se = (self._block_args.se_ratio is not None) and (0 < self._block_args.se_ratio <= 1)
+        self.id_skip = block_args.id_skip  # skip connection and drop connect
+
+        # Get static or dynamic convolution depending on image size
+        Conv2d = get_same_padding_conv2d(image_size=global_params.image_size)
+
+        # Expansion phase
+        inp = self._block_args.input_filters  # number of input channels
+        oup = self._block_args.input_filters * self._block_args.expand_ratio  # number of output channels
+        if self._block_args.expand_ratio != 1:
+            self._expand_conv = Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+            self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+
+        # Depthwise convolution phase
+        k = self._block_args.kernel_size
+        s = self._block_args.stride
+        self._depthwise_conv = Conv2d(
+            in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
+            kernel_size=k, stride=s, bias=False)
+        self._bn1 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+
+        # Squeeze and Excitation layer, if desired
+        if self.has_se:
+            num_squeezed_channels = max(1, int(self._block_args.input_filters * self._block_args.se_ratio))
+            self._se_reduce = Conv2d(in_channels=oup, out_channels=num_squeezed_channels, kernel_size=1)
+            self._se_expand = Conv2d(in_channels=num_squeezed_channels, out_channels=oup, kernel_size=1)
+
+        # Output phase
+        final_oup = self._block_args.output_filters
+        self._project_conv = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+        self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
+        self._swish = MemoryEfficientSwish()
+
+    def forward(self, inputs, drop_connect_rate=None):
+        """
+        :param inputs: input tensor
+        :param drop_connect_rate: drop connect rate (float, between 0 and 1)
+        :return: output of block
+        """
+
+        # Expansion and Depthwise Convolution
+        x = inputs
+        if self._block_args.expand_ratio != 1:
+            x = self._expand_conv(inputs)
+            x = self._bn0(x)
+            x = self._swish(x)
+
+        x = self._depthwise_conv(x)
+        x = self._bn1(x)
+        x = self._swish(x)
+
+        # Squeeze and Excitation
+        if self.has_se:
+            x_squeezed = F.adaptive_avg_pool2d(x, 1)
+            x_squeezed = self._se_reduce(x_squeezed)
+            x_squeezed = self._swish(x_squeezed)
+            x_squeezed = self._se_expand(x_squeezed)
+            x = torch.sigmoid(x_squeezed) * x
+
+        x = self._project_conv(x)
+        x = self._bn2(x)
+
+        # Skip connection and drop connect
+        input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
+        if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
             if drop_connect_rate:
-                drop_connect_rate *= float(idx) / len(self.model._blocks)
-            x = block(x, drop_connect_rate=drop_connect_rate)
+                x = drop_connect(x, p=drop_connect_rate, training=self.training)
+            x = x + inputs  # skip connection
+        return x
 
-            if block._depthwise_conv.stride == [2, 2]:
-                feature_maps.append(last_x)
-            elif idx == len(self.model._blocks) - 1:
-                feature_maps.append(x)
-            last_x = x
-        del last_x
-        return feature_maps  # [1:]
+    def set_swish(self, memory_efficient=True):
+        """Sets swish function as memory efficient (for training) or standard (for export)"""
+        self._swish = MemoryEfficientSwish() if memory_efficient else Swish()
+
+
+class Conv2dStaticSamePadding(nn.Module):
+    """
+    The real keras/tensorflow conv2d with same padding
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, groups=1, dilation=1, **kwargs):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride,
+                              bias=bias, groups=groups)
+        self.stride = self.conv.stride
+        self.kernel_size = self.conv.kernel_size
+        self.dilation = self.conv.dilation
+
+        if isinstance(self.stride, int):
+            self.stride = [self.stride] * 2
+        elif len(self.stride) == 1:
+            self.stride = [self.stride[0]] * 2
+
+        if isinstance(self.kernel_size, int):
+            self.kernel_size = [self.kernel_size] * 2
+        elif len(self.kernel_size) == 1:
+            self.kernel_size = [self.kernel_size[0]] * 2
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        
+        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
+        
+        left = extra_h // 2
+        right = extra_h - left
+        top = extra_v // 2
+        bottom = extra_v - top
+
+        x = F.pad(x, [left, right, top, bottom])
+
+        x = self.conv(x)
+        return x
+
+
+class MaxPool2dStaticSamePadding(nn.Module):
+    """
+    The real keras/tensorflow MaxPool2d with same padding
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.pool = nn.MaxPool2d(*args, **kwargs)
+        self.stride = self.pool.stride
+        self.kernel_size = self.pool.kernel_size
+
+        if isinstance(self.stride, int):
+            self.stride = [self.stride] * 2
+        elif len(self.stride) == 1:
+            self.stride = [self.stride[0]] * 2
+
+        if isinstance(self.kernel_size, int):
+            self.kernel_size = [self.kernel_size] * 2
+        elif len(self.kernel_size) == 1:
+            self.kernel_size = [self.kernel_size[0]] * 2
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        
+        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
+
+        left = extra_h // 2
+        right = extra_h - left
+        top = extra_v // 2
+        bottom = extra_v - top
+
+        x = F.pad(x, [left, right, top, bottom])
+
+        x = self.pool(x)
+        return x
+
+
+class Activation(nn.Module):
+
+    def __init__(self, name, **params):
+
+        super().__init__()
+
+        if name is None or name == 'identity':
+            self.activation = nn.Identity(**params)
+        elif name == 'sigmoid':
+            self.activation = nn.Sigmoid()
+        elif name == 'softmax2d':
+            self.activation = nn.Softmax(dim=1, **params)
+        elif name == 'softmax':
+            self.activation = nn.Softmax(**params)
+        elif name == 'logsoftmax':
+            self.activation = nn.LogSoftmax(**params)
+        elif name == 'tanh':
+            self.activation = nn.Tanh()
+        # elif name == 'argmax':
+        #     self.activation = ArgMax(**params)
+        # elif name == 'argmax2d':
+        #     self.activation = ArgMax(dim=1, **params)
+        # elif name == 'clamp':
+        #     self.activation = Clamp(**params)
+        elif callable(name):
+            self.activation = name(**params)
+        else:
+            raise ValueError('Activation should be callable/sigmoid/softmax/logsoftmax/tanh/None; got {}'.format(name))
+    def forward(self, x):
+        return self.activation(x)
+
+
+class SegmentationHead(nn.Sequential):
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1):
+        conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
+        upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
+        activation = Activation(activation)
+        super().__init__(conv2d, upsampling, activation)
+
+
+class ClassificationHead(nn.Sequential):
+
+    def __init__(self, in_channels, classes, pooling="avg", dropout=0.2, activation=None):
+        if pooling not in ("max", "avg"):
+            raise ValueError("Pooling should be one of ('max', 'avg'), got {}.".format(pooling))
+        pool = nn.AdaptiveAvgPool2d(1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
+        flatten = nn.Flatten()
+        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
+        linear = nn.Linear(in_channels, classes, bias=True)
+        activation = Activation(activation)
+        super().__init__(pool, flatten, dropout, linear, activation)
 
 
 if __name__ == '__main__':
