@@ -1,7 +1,3 @@
-# original author: signatrix
-# adapted from https://github.com/signatrix/efficientdet/blob/master/train.py
-# modified by Zylo117
-
 import argparse
 import datetime
 import os
@@ -17,31 +13,31 @@ from tqdm.autonotebook import tqdm
 # from torchinfo import summary
 
 from val import val
-from backbone import EfficientDetBackbone
-from efficientdet.loss import FocalLoss
+from backbone import HybridNetsBackbone
+from hybridnets.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
     save_checkpoint, DataLoaderX
-from efficientdet.dataset import BddDataset
-from efficientdet.loss import FocalLossSeg, TverskyLoss
-from efficientdet.autoanchor import run_anchor
+from hybridnets.dataset import BddDataset
+from hybridnets.loss import FocalLossSeg, TverskyLoss
+from hybridnets.autoanchor import run_anchor
 from utils.utils import Params
 
 
 def get_args():
-    parser = argparse.ArgumentParser('Yet Another EfficientDet Pytorch: SOTA object detection network - Zylo117')
-    parser.add_argument('-p', '--project', type=str, default='coco', help='project file that contains parameters')
-    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='coefficients of efficientdet')
-    parser.add_argument('-n', '--num_workers', type=int, default=12, help='num_workers of dataloader')
+    parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
+    parser.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
+    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
+    parser.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
     parser.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
-                        help='freeze encoder and neck (effnet and bifpn)')
-    parser.add_argument('--freeze_det', type=boolean_string, default=False,
-                        help='freeze detection head')
-    parser.add_argument('--freeze_seg', type=boolean_string, default=False,
-                        help='freeze segmentation head')
+                        help='Freeze encoder and neck (effnet and bifpn)')
+    parser.add_argument('--freFze_det', type=boolean_string, default=False,
+                        help='Freeze detection head')
+    parser.add_argument('--freFze_seg', type=boolean_string, default=False,
+                        help='Freeze segmentation head')
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--optim', type=str, default='adamw', help='select optimizer for training, '
+    parser.add_argument('--optim', type=str, default='adamw', help='Select optimizer for training, '
                                                                    'suggest using \'admaw\' until the'
                                                                    ' very final stage then switch to \'sgd\'')
     parser.add_argument('--num_epochs', type=int, default=500)
@@ -51,16 +47,16 @@ def get_args():
                         help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')
     parser.add_argument('--es_patience', type=int, default=0,
                         help='Early stopping\'s parameter: number of epochs with no improvement after which training will be stopped. Set to 0 to disable this technique.')
-    parser.add_argument('--data_path', type=str, default='datasets/', help='the root folder of dataset')
+    parser.add_argument('--data_path', type=str, default='datasets/', help='The root folder of dataset')
     parser.add_argument('--log_path', type=str, default='checkpoints/')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
-                        help='whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
+                        help='Whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
     parser.add_argument('--saved_path', type=str, default='checkpoints/')
     parser.add_argument('--debug', type=boolean_string, default=False,
-                        help='whether visualize the predicted boxes of training, '
+                        help='Whether visualize the predicted boxes of training, '
                              'the output images will be in test/')
     parser.add_argument('--cal_map', type=boolean_string, default=True,
-                        help='calculate map in validation')
+                        help='Calculate map in validation')
 
     args = parser.parse_args()
     return args
@@ -175,7 +171,7 @@ def train(opt):
     if params.need_autoanchor:
         params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
 
-    model = EfficientDetBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
+    model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                  ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                  seg_classes=len(params.seg_list))
 
@@ -208,7 +204,7 @@ def train(opt):
     if opt.freeze_backbone:
         def freeze_backbone(m):
             classname = m.__class__.__name__
-            if classname in ['EfficientNetEncoder', 'BiFPN']:
+            if classname in ['EfficientNetEncoder', 'BiFPN']:  # replace backbone classname when using another backbone
                 print("[Info] freezing {}".format(classname))
                 for param in m.parameters():
                     param.requires_grad = False
@@ -340,7 +336,7 @@ def train(opt):
                     step += 1
 
                     if step % opt.save_interval == 0 and step > 0:
-                        save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+                        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
                 except Exception as e:
@@ -354,7 +350,7 @@ def train(opt):
                 best_fitness, best_loss, best_epoch = val(model, optimizer, val_generator, params, opt, writer, epoch,
                                                           step, best_fitness, best_loss, best_epoch)
     except KeyboardInterrupt:
-        # save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+        # save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
         writer.close()
     writer.close()
 

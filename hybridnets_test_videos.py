@@ -2,14 +2,18 @@ import torch
 import cv2
 import numpy as np
 from torch.backends import cudnn
-from backbone import EfficientDetBackbone
-from utils.utils import preprocess, invert_affine, postprocess, preprocess_video, BBoxTransform, ClipBoxes
+from backbone import HybridNetsBackbone
+from utils.utils import invert_affine, postprocess, preprocess_video, BBoxTransform, ClipBoxes
 
 # Video's path
 video_src = 'videotest.mp4'  # set int to use webcam, set str to read from a video file
 
 compound_coef = 0
 force_input_size = None  # set None to use default size
+
+# replace this part with your project's anchor config
+anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
+anchor_scales = [2**0, 2**0.70, 2**1.32]
 
 threshold = 0.2
 iou_threshold = 0.2
@@ -26,8 +30,9 @@ input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
 input_size = input_sizes[compound_coef] if force_input_size is None else force_input_size
 
 # load model
-model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(obj_list))
-model.load_state_dict(torch.load(f'weights/efficientdet-d{compound_coef}.pth'))
+model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
+                             ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
+model.load_state_dict(torch.load(f'weights/weight.pth'))
 model.requires_grad_(False)
 model.eval()
 

@@ -1,17 +1,15 @@
-# Author: Zylo117
-
 import torch
 from torch import nn
 import timm
 
-from efficientdet.model import BiFPN, Regressor, Classifier, BiFPNDecoder
+from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
 from utils.utils import Anchors
-from efficientdet.model import SegmentationHead
+from hybridnets.model import SegmentationHead
 
 
-class EfficientDetBackbone(nn.Module):
+class HybridNetsBackbone(nn.Module):
     def __init__(self, num_classes=80, compound_coef=0, seg_classes = 1, **kwargs):
-        super(EfficientDetBackbone, self).__init__()
+        super(HybridNetsBackbone, self).__init__()
         self.compound_coef = compound_coef
 
         self.seg_classes = seg_classes

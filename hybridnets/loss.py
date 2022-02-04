@@ -172,7 +172,6 @@ class FocalLoss(nn.Module):
                 gt_ctr_x = assigned_annotations[:, 0] + 0.5 * gt_widths
                 gt_ctr_y = assigned_annotations[:, 1] + 0.5 * gt_heights
 
-                # efficientdet style
                 gt_widths = torch.clamp(gt_widths, min=1)
                 gt_heights = torch.clamp(gt_heights, min=1)
 

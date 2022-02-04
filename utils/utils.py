@@ -1,5 +1,3 @@
-# Author: Zylo117
-
 import math
 import os
 import uuid
@@ -10,6 +8,7 @@ from functools import partial
 from torch.utils.data import DataLoader
 from prefetch_generator import BackgroundGenerator
 import random
+import itertools
 
 import cv2
 import numpy as np
@@ -687,17 +686,8 @@ class ConfusionMatrix:
 
 
 class BBoxTransform(nn.Module):
+    
     def forward(self, anchors, regression):
-        """
-        decode_box_outputs adapted from https://github.com/google/automl/blob/master/efficientdet/anchors.py
-
-        Args:
-            anchors: [batchsize, boxes, (y1, x1, y2, x2)]
-            regression: [batchsize, boxes, (dy, dx, dh, dw)]
-
-        Returns:
-
-        """
         y_centers_a = (anchors[..., 0] + anchors[..., 2]) / 2
         x_centers_a = (anchors[..., 1] + anchors[..., 3]) / 2
         ha = anchors[..., 2] - anchors[..., 0]
@@ -735,9 +725,6 @@ class ClipBoxes(nn.Module):
 
 
 class Anchors(nn.Module):
-    """
-    adapted and modified from https://github.com/google/automl/blob/master/efficientdet/anchors.py by Zylo117
-    """
 
     def __init__(self, anchor_scale=4., pyramid_levels=None, **kwargs):
         super().__init__()
