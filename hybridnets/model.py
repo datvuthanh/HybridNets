@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch
 from torchvision.ops.boxes import nms as nms_torch
 import torch.nn.functional as F
+import math
+from functools import partial
 
 
 def nms(dets, thresh):
@@ -9,10 +11,6 @@ def nms(dets, thresh):
 
 
 class SeparableConvBlock(nn.Module):
-    """
-    created by Zylo117
-    """
-
     def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
@@ -50,10 +48,6 @@ class SeparableConvBlock(nn.Module):
 
 
 class BiFPN(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True,
                  use_p8=False):
         """
@@ -338,10 +332,6 @@ class BiFPN(nn.Module):
 
 
 class Regressor(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, in_channels, num_anchors, num_layers, pyramid_levels=5, onnx_export=False):
         super(Regressor, self).__init__()
         self.num_layers = num_layers
@@ -530,10 +520,6 @@ class BiFPNDecoder(nn.Module):
 #     return out
 
 class Classifier(nn.Module):
-    """
-    modified by Zylo117
-    """
-
     def __init__(self, in_channels, num_anchors, num_classes, num_layers, pyramid_levels=5, onnx_export=False):
         super(Classifier, self).__init__()
         self.num_anchors = num_anchors
@@ -727,7 +713,6 @@ class MBConvBlock(nn.Module):
 
 class Conv2dStaticSamePadding(nn.Module):
     """
-    created by Zylo117
     The real keras/tensorflow conv2d with same padding
     """
 
@@ -768,7 +753,6 @@ class Conv2dStaticSamePadding(nn.Module):
 
 class MaxPool2dStaticSamePadding(nn.Module):
     """
-    created by Zylo117
     The real keras/tensorflow MaxPool2d with same padding
     """
 

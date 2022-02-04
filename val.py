@@ -7,8 +7,8 @@ from tqdm.autonotebook import tqdm
 from utils import smp_metrics
 from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
     save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes
-from backbone import EfficientDetBackbone
-from efficientdet.dataset import BddDataset
+from backbone import HybridNetsBackbone
+from hybridnets.dataset import BddDataset
 from torchvision import transforms
 from utils.utils import Params
 
@@ -208,14 +208,14 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     'model': model,
                     'optimizer': optimizer.state_dict()}
             print("Saving checkpoint with best fitness", fi[0])
-            save_checkpoint(ckpt, opt.saved_path, f'efficientdet-d{opt.compound_coef}_best.pth')
+            save_checkpoint(ckpt, opt.saved_path, f'hybridnets-d{opt.compound_coef}_best.pth')
     else:
         # if not calculating map, save by best loss
         if loss + opt.es_min_delta < best_loss:
             best_loss = loss
             best_epoch = epoch
 
-            save_checkpoint(model, opt.saved_path, f'efficientdet-d{opt.compound_coef}_{epoch}_{step}.pth')
+            save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
 
     # Early stopping
     if epoch - best_epoch > opt.es_patience > 0:
@@ -273,7 +273,7 @@ def val_from_cmd(model, val_generator, params):
         # display(out, imgs, ['car'], imshow=False, imwrite=True)
 
         # for index, filename in enumerate(filenames):
-        #   ori_img = cv2.imread('datasets/bdd100k_effdet/val/'+filename)
+        #   ori_img = cv2.imread('datasets/bdd100k/val/'+filename)
         #   if len(out[index]['rois']):
         #     for roi in out[index]['rois']:
         #       x1,y1,x2,y2 = [int(x) for x in roi]
@@ -408,15 +408,15 @@ def val_from_cmd(model, val_generator, params):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument('-p', '--project', type=str, default='coco', help='project file that contains parameters')
-    ap.add_argument('-c', '--compound_coef', type=int, default=0, help='coefficients of efficientdet')
+    ap.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
+    ap.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
     ap.add_argument('-w', '--weights', type=str, default=None, help='/path/to/weights')
-    ap.add_argument('-n', '--num_workers', type=int, default=12, help='num_workers of dataloader')
+    ap.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
     project_name = args.project
-    weights_path = f'weights/efficientdet-d{compound_coef}.pth' if args.weights is None else args.weights
+    weights_path = f'weights/hybridnets-d{compound_coef}.pth' if args.weights is None else args.weights
 
     params = Params(f'projects/{project_name}.yml')
     obj_list = params.obj_list
@@ -442,7 +442,7 @@ if __name__ == "__main__":
         collate_fn=BddDataset.collate_fn
     )
 
-    model = EfficientDetBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
+    model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
                                      ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                      seg_classes=len(params.seg_list))
     try:

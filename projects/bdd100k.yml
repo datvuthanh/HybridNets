@@ -1,4 +1,4 @@
-project_name: bdd100k_effdet  # also the folder name of the dataset that under data_path folder
+project_name: bdd100k  # also the folder name of the dataset that under data_path folder
 train_set: train
 val_set: val
 num_gpus: 1
@@ -38,31 +38,31 @@ obj_list: ['car']
 seg_list: ['road',
           'lane']
 
-DATASET:
-  COLOR_RGB: false
-  DATAROOT: ./datasets/bdd100k_effdet
-  LABELROOT: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
-  LANEROOT: ./datasets/bdd_lane_gt
-  MASKROOT: ./datasets/bdd_seg_gt
-  DATASET: BddDataset
-  DATA_FORMAT: jpg
-  FLIP: true
-  HSV_H: 0.015
-  HSV_S: 0.7
-  HSV_V: 0.4
-  ORG_IMG_SIZE:
+dataset:
+  color_rgb: false
+  dataroot: ./datasets/bdd100k
+  labelroot: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
+  laneroot: ./datasets/bdd_lane_gt
+  maskroot: ./datasets/bdd_seg_gt
+  dataset: bdddataset
+  data_format: jpg
+  flip: true
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
+  org_img_size:
   - 720
   - 1280
-  ROT_FACTOR: 10
-  SCALE_FACTOR: 0.25
-  SHEAR: 0.0
-  TEST_SET: val
-  TRAIN_SET: train
-  TRANSLATE: 0.1
-MODEL:
-  IMAGE_SIZE:
+  rot_factor: 10
+  scale_factor: 0.25
+  shear: 0.0
+  test_set: val
+  train_set: train
+  translate: 0.1
+model:
+  image_size:
   - 640
   - 384
-NEED_AUTOANCHOR: false
-PIN_MEMORY: false
+need_autoanchor: false
+pin_memory: false
 num_seg_class: 2
