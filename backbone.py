@@ -2,16 +2,15 @@
 
 import torch
 from torch import nn
+import timm
 
-from efficientdet.model import BiFPN, Regressor, Classifier, EfficientNet, BiFPNDecoder
-from efficientdet.utils import Anchors
-from encoders import get_encoder
-from efficientdet.initialize import initialize_decoder, initialize_head
-from efficientdet.segmentation_head import Activation, SegmentationHead, ClassificationHead
+from efficientdet.model import BiFPN, Regressor, Classifier, BiFPNDecoder
+from utils.utils import Anchors
+from efficientdet.model import SegmentationHead
 
 
 class EfficientDetBackbone(nn.Module):
-    def __init__(self, num_classes=80, compound_coef=0, load_weights=False, seg_classes = 1, **kwargs):
+    def __init__(self, num_classes=80, compound_coef=0, seg_classes = 1, **kwargs):
         super(EfficientDetBackbone, self).__init__()
         self.compound_coef = compound_coef
 
@@ -75,18 +74,13 @@ class EfficientDetBackbone(nn.Module):
                                pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
                                **kwargs)
 
-        # self.backbone_net = EfficientNet(self.backbone_compound_coef[compound_coef], load_weights)
+        # Use timm to create another backbone that you prefer
+        # https://github.com/rwightman/pytorch-image-models
+        self.encoder = timm.create_model('efficientnet_b' + str(compound_coef), pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
 
-        self.encoder = get_encoder(
-            'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
-            in_channels=3,
-            depth=5,
-            weights='imagenet',
-        )
-
-        initialize_decoder(self.bifpn)
-        initialize_decoder(self.bifpndecoder)
-        initialize_head(self.segmentation_head)
+        self.initialize_decoder(self.bifpndecoder)
+        self.initialize_head(self.segmentation_head)
+        self.initialize_decoder(self.bifpn)
 
     def freeze_bn(self):
         for m in self.modules():
@@ -94,10 +88,7 @@ class EfficientDetBackbone(nn.Module):
                 m.eval()
 
     def forward(self, inputs):
-        max_size = inputs.shape[-1]
-
-        # p1, p2, p3, p4, p5 = self.backbone_net(inputs)
-        p2, p3, p4, p5 = self.encoder(inputs)[-4:]  # self.backbone_net(inputs)
+        p3, p4, p5 = self.encoder(inputs)
 
         features = (p3, p4, p5)
 
@@ -112,11 +103,28 @@ class EfficientDetBackbone(nn.Module):
         anchors = self.anchors(inputs, inputs.dtype)
 
         return features, regression, classification, anchors, segmentation
+    
+    def initialize_decoder(module):
+        for m in module.modules():
 
-    def init_backbone(self, path):
-        state_dict = torch.load(path)
-        try:
-            ret = self.load_state_dict(state_dict, strict=False)
-            print(ret)
-        except RuntimeError as e:
-            print('Ignoring ' + str(e) + '"')
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_uniform_(m.weight, mode="fan_in", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
+
+    def initialize_head(module):
+        for m in module.modules():
+            if isinstance(m, (nn.Linear, nn.Conv2d)):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
