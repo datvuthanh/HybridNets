@@ -30,25 +30,25 @@ class BddDataset(Dataset):
         self.transform = transform
         self.inputsize = inputsize
         self.Tensor = transforms.ToTensor()
-        img_root = Path(params.dataset.dataroot)
-        label_root = Path(params.dataset.labelroot)
-        mask_root = Path(params.dataset.maskroot)
-        lane_root = Path(params.dataset.laneroot)
+        img_root = Path(params.dataset['dataroot'])
+        label_root = Path(params.dataset['labelroot'])
+        mask_root = Path(params.dataset['maskroot'])
+        lane_root = Path(params.dataset['laneroot'])
         if is_train:
-            indicator = params.dataset.train_set
+            indicator = params.dataset['train_set']
         else:
-            indicator = params.dataset.test_set
+            indicator = params.dataset['test_set']
         self.img_root = img_root / indicator
         self.label_root = label_root / indicator
         self.mask_root = mask_root / indicator
         self.lane_root = lane_root / indicator
         # self.label_list = self.label_root.iterdir()
         self.mask_list = self.mask_root.iterdir()
-        self.data_format = params.dataset.data_format
-        self.scale_factor = params.dataset.scale_factor
-        self.rotation_factor = params.dataset.rot_factor
-        self.flip = params.dataset.flip
-        self.color_rgb = params.dataset.color_rgb
+        self.data_format = params.dataset['data_format']
+        self.scale_factor = params.dataset['scale_factor']
+        self.rotation_factor = params.dataset['rot_factor']
+        self.flip = params.dataset['flip']
+        self.color_rgb = params.dataset['color_rgb']
 
         # bdd_labels = {
         # 'unlabeled':0, 'dynamic': 1, 'ego vehicle': 2, 'ground': 3,
@@ -69,7 +69,7 @@ class BddDataset(Dataset):
         self.id_dict_single = {'car': 0, 'bus': 1, 'truck': 2, 'train': 3}
         # id_dict = {'car': 0, 'bus': 1, 'truck': 2}
 
-        self.shapes = np.array(params.dataset.org_img_size)
+        self.shapes = np.array(params.dataset['org_img_size'])
         self.db = self._get_db()
 
     def _get_db(self):
@@ -230,13 +230,13 @@ class BddDataset(Dataset):
             (img, seg_label, lane_label), labels = random_perspective(
                 combination=combination,
                 targets=labels,
-                degrees=self.params.dataset.rot_factor,
-                translate=self.params.dataset.translate,
-                scale=self.params.dataset.scale_factor,
-                shear=self.params.dataset.shear
+                degrees=self.params.dataset['rot_factor'],
+                translate=self.params.dataset['translate'],
+                scale=self.params.dataset['scale_factor'],
+                shear=self.params.dataset['shear']
             )
 #             print(labels.shape)
-            augment_hsv(img, hgain=self.params.dataset.hsv_h, sgain=self.params.dataset.hsv_s, vgain=self.params.dataset.hsv_v)
+            augment_hsv(img, hgain=self.params.dataset['hsv_h'], sgain=self.params.dataset['hsv_s'], vgain=self.params.dataset['hsv_v'])
 #             img, seg_label, labels = cutout(combination=combination, labels=labels)
 
             # random left-right flip
@@ -349,7 +349,7 @@ class BddDataset(Dataset):
                     remain.append(obj)
         return remain
 
-    def convert(size, box):
+    def convert(self, size, box):
             dw = 1. / (size[0])
             dh = 1. / (size[1])
             x = (box[0] + box[1]) / 2.0
