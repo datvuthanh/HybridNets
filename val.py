@@ -342,20 +342,47 @@ def val_from_cmd(model, val_generator, params):
             # anh[seg_0 == 2] = (0,0,255)
             # anh = np.uint8(anh)
             # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
-
-        for i in range(len(params.seg_list) + 1):
-            # print(segmentation[:,i,...].unsqueeze(1).size())
-            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
+            
+        # Convert segmentaiton tensor --> 3 binary 0 1
+        # batch_size, num_classes, height, width
+        _, segmentation = torch.max(segmentation, 1)
+#         _, seg_annot = torch.max(seg_annot, 1)
+        for i in range(len(params.seg_list) + 1 ):
+            seg = torch.zeros((seg_annot.size(0),1,384,640), dtype=torch.int32)
+    #         seg = segmentation[i] #.round()
+            # create 3 tensor 0 1
+            seg[:, 0, ...][segmentation == i] = 1
+            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(),
                                                                     seg_annot[:, i, ...].unsqueeze(
-                                                                        1).round().long().cuda(),
-                                                                    mode='binary', threshold=0.5)
+                                                                        1).long().cuda(),
+                                                                    mode='binary')            
 
             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-            # print("I", i , iou)
             f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
 
             iou_ls[i].append(iou.detach().cpu().numpy())
             f1_ls[i].append(f1.detach().cpu().numpy())
+        
+        
+#         exit()
+            
+            
+                    
+
+#         for i in range(len(params.seg_list) + 1):
+#             print(segmentation.size())
+#             exit()
+#             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
+#                                                                     seg_annot[:, i, ...].unsqueeze(
+#                                                                         1).round().long().cuda(),
+#                                                                     mode='binary', threshold=0.5)
+
+#             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+#             # print("I", i , iou)
+#             f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+
+#             iou_ls[i].append(iou.detach().cpu().numpy())
+#             f1_ls[i].append(f1.detach().cpu().numpy())
 
     # print(len(iou_ls[0]))
     # print(iou_ls)
@@ -369,7 +396,7 @@ def val_from_cmd(model, val_generator, params):
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]
-    # print(stats[3])
+    print("STATS: ", stats.shape())
 
     # Count detected boxes per class
     # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
@@ -447,13 +474,15 @@ if __name__ == "__main__":
     model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
                                      ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                      seg_classes=len(params.seg_list))
+    
+#     print(model)
     try:
         model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
     except:
         model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu'))['model'])
     model.requires_grad_(False)
 
-    if params['num_gpus'] > 0:
-        model.cuda()
+#     if params['num_gpus'] > 0:
+    model.cuda()
 
     val_from_cmd(model, val_generator, params)
