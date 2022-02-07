@@ -110,19 +110,25 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                 # anh = np.uint8(anh)
                 # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-                for i in range(len(params.seg_list) + 1):
-                    # print(segmentation[:,i,...].unsqueeze(1).size())
-                    tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
-                                                                           seg_annot[:, i, ...].unsqueeze(
-                                                                               1).round().long().cuda(),
-                                                                           mode='binary', threshold=0.5)
+                # Convert segmentaiton tensor --> 3 binary 0 1
+								# batch_size, num_classes, height, width
+								_, segmentation = torch.max(segmentation, 1)
+				#         _, seg_annot = torch.max(seg_annot, 1)
+								for i in range(len(params.seg_list) + 1 ):
+										seg = torch.zeros((seg_annot.size(0),1,384,640), dtype=torch.int32)
+						#         seg = segmentation[i] #.round()
+										# create 3 tensor 0 1
+										seg[:, 0, ...][segmentation == i] = 1
+										tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(),
+																																						seg_annot[:, i, ...].unsqueeze(
+																																								1).long().cuda(),
+																																						mode='binary')            
 
-                    iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-                    # print("I", i , iou)
-                    f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+										iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+										f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
 
-                    iou_ls[i].append(iou.detach().cpu().numpy())
-                    f1_ls[i].append(f1.detach().cpu().numpy())
+										iou_ls[i].append(iou.detach().cpu().numpy())
+										f1_ls[i].append(f1.detach().cpu().numpy())
 
         loss = cls_loss + reg_loss + seg_loss
         if loss == 0 or not torch.isfinite(loss):

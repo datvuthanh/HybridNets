@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 from pathlib import Path
 from torch.utils.data import Dataset
 from utils.utils import letterbox, augment_hsv, random_perspective
-from tqdm.notebook import tqdm
+from tqdm.autonotebook import tqdm
 import json
 
 
