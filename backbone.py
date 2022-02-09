@@ -6,6 +6,7 @@ from hybridnets.model import BiFPN, Regressor, Classifier, BiFPNDecoder
 from utils.utils import Anchors
 from hybridnets.model import SegmentationHead
 
+from encoders import get_encoder
 
 class HybridNetsBackbone(nn.Module):
     def __init__(self, num_classes=80, compound_coef=0, seg_classes = 1, **kwargs):
@@ -56,11 +57,11 @@ class HybridNetsBackbone(nn.Module):
         self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
 
         self.segmentation_head = SegmentationHead(
-            in_channels=32,
+            in_channels=64,
             out_channels=self.seg_classes+1 if self.seg_classes > 1 else self.seg_classes,
             activation='softmax2d' if self.seg_classes > 1 else 'sigmoid',
             kernel_size=1,
-            upsampling=8,
+            upsampling=4,
         )
 
         self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
@@ -74,8 +75,15 @@ class HybridNetsBackbone(nn.Module):
 
         # Use timm to create another backbone that you prefer
         # https://github.com/rwightman/pytorch-image-models
-        self.encoder = timm.create_model('efficientnet_b' + str(compound_coef), pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
-
+#         self.encoder = timm.create_model('efficientnet_b' + str(compound_coef), pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
+        # EfficientNet_Pytorch
+        self.encoder = get_encoder(
+            'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
+            in_channels=3,
+            depth=5,
+            weights='imagenet',
+        )
+    
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_head(self.segmentation_head)
         self.initialize_decoder(self.bifpn)
@@ -86,16 +94,21 @@ class HybridNetsBackbone(nn.Module):
                 m.eval()
 
     def forward(self, inputs):
-        p3, p4, p5 = self.encoder(inputs)
+        max_size = inputs.shape[-1]
+
+        # p1, p2, p3, p4, p5 = self.backbone_net(inputs)
+        p2, p3, p4, p5 = self.encoder(inputs)[-4:]  # self.backbone_net(inputs)
 
         features = (p3, p4, p5)
 
         features = self.bifpn(features)
-
-        outputs = self.bifpndecoder(features)
+        
+        p3,p4,p5,p6,p7 = features
+        
+        outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
 
         segmentation = self.segmentation_head(outputs)
-
+        
         regression = self.regressor(features)
         classification = self.classifier(features)
         anchors = self.anchors(inputs, inputs.dtype)
