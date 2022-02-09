@@ -436,88 +436,37 @@ class BiFPNDecoder(nn.Module):
             self,
             encoder_depth=5,
             pyramid_channels=64,
-            segmentation_channels=32,
-            output_channels=32,
+            segmentation_channels=64,
             dropout=0.2,
             merge_policy="add", ):
         super().__init__()
 
         self.seg_blocks = nn.ModuleList([
             SegmentationBlock(pyramid_channels, segmentation_channels, n_upsamples=n_upsamples)
-            for n_upsamples in [4, 3, 2, 1, 0]
+            for n_upsamples in [5,4, 3, 2, 1]
         ])
-
-        # self.swish = Swish()
-
-        # self.block = nn.Sequential(
-        #           Conv2dStaticSamePadding(segmentation_channels, output_channels, kernel_size = (3,3), stride=1, padding=1, bias=False),
-        #           nn.BatchNorm2d(output_channels, momentum=0.01, eps=1e-3),
-        #       )
-
-        # self.conv_sp = SeparableConvBlock(segmentation_channels, onnx_export=False)
+        
+        self.seg_p2 = SegmentationBlock(32, 64, n_upsamples=0)
 
         self.merge = MergeBlock(merge_policy)
 
         self.dropout = nn.Dropout2d(p=dropout, inplace=True)
 
     def forward(self, inputs):
-        p3, p4, p5, p6, p7 = inputs
+        p2, p3, p4, p5, p6, p7 = inputs
 
         feature_pyramid = [seg_block(p) for seg_block, p in zip(self.seg_blocks, [p7, p6, p5, p4, p3])]
+        
+        p2 = self.seg_p2(p2)
+            
+        p3,p4,p5,p6,p7 = feature_pyramid
 
-        x = self.merge(feature_pyramid)
-
-        # x = self.swish(self.block(x))
+        x = self.merge((p2,p3,p4,p5,p6,p7))
 
         x = self.dropout(x)
 
         return x
 
-
-# # Dat Vu add
-# class DecoderModule(nn.Module):
-#   """
-#   modified by datvuthanh
-#   """
-#   def __init__(self,num_channels=64,onnx_export=False):
-#     super(DecoderModule, self).__init__()
-#     self.p3_upsample = nn.Upsample(scale_factor=1, mode='nearest')
-#     self.p4_upsample = nn.Upsample(scale_factor=2, mode='nearest')
-#     self.p5_upsample = nn.Upsample(scale_factor=4, mode='nearest')
-#     self.p6_upsample = nn.Upsample(scale_factor=8, mode='nearest')
-#     self.p7_upsample = nn.Upsample(scale_factor=16, mode='nearest')
-
-#     self.conv7_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-#     self.conv6_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-#     self.conv5_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-#     self.conv4_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-#     self.conv3_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-
-#     self.classification = nn.Conv2d(in_channels=320, out_channels = 21, kernel_size = 1, stride = 1, padding = 0)
-
-#   def forward(self, inputs):
-#     feats = []
-#     p3,p4,p5,p6,p7 = inputs
-
-#     p3_up = self.conv3_up(self.p3_upsample(p3))
-#     p4_up = self.conv4_up(self.p4_upsample(p4))
-#     p5_up = self.conv5_up(self.p5_upsample(p5))
-#     p6_up = self.conv6_up(self.p6_upsample(p6))
-#     p7_up = self.conv7_up(self.p7_upsample(p7))
-
-#     feats.append(p3_up)
-#     feats.append(p4_up)
-#     feats.append(p5_up)
-#     feats.append(p6_up)
-#     feats.append(p7_up)
-
-#     feats = torch.cat(feats, dim=1)
-
-#     out = self.classification(feats)
-
-#     out = F.interpolate(out, size=(640, 640), mode='bilinear', align_corners=True)
-
-#     return out
 
 class Classifier(nn.Module):
     def __init__(self, in_channels, num_anchors, num_classes, num_layers, pyramid_levels=5, onnx_export=False):
