@@ -402,7 +402,6 @@ def val_from_cmd(model, val_generator, params):
 
     # Compute statistics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]
-    print("STATS: ", stats.shape())
 
     # Count detected boxes per class
     # boxes_per_class = np.bincount(stats[2].astype(np.int64), minlength=1)
