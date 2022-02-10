@@ -51,9 +51,9 @@ transform = transforms.Compose([
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
                            ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
-    model.load_state_dict(torch.load('weights/weight.pth'), strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'), strict=False)
 except:
-    model.load_state_dict(torch.load('weights/weight.pth')['model'], strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'], strict=False)
 model.requires_grad_(False)
 model.eval()
 

@@ -17,17 +17,21 @@ img_path = [path for path in glob.glob('./demo_imgs/*.jpg')]
 # img_path = [img_path[0]]  # demo with 1 image
 input_imgs = []
 shapes = []
+det_only_imgs = []
 
 # replace this part with your project's anchor config
 anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
 anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
 
-threshold = 0.5
+threshold = 0.25
 iou_threshold = 0.3
 imshow = False
-imwrite = True
+imwrite = False
+show_det = True
+show_seg = False
+os.makedirs('test', exist_ok=True)
 
-use_cuda = True
+use_cuda = False
 use_float16 = False
 cudnn.fastest = True
 cudnn.benchmark = True
@@ -70,9 +74,9 @@ x = x.to(torch.float32 if not use_float16 else torch.float16)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
                            ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
-    model.load_state_dict(torch.load('weights/weight.pth'), strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'))
 except:
-    model.load_state_dict(torch.load('weights/weight.pth')['model'], strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'], strict=False)
 model.requires_grad_(False)
 model.eval()
 
@@ -97,10 +101,14 @@ with torch.no_grad():
         # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)
 
         color_mask = np.mean(color_seg, 2)
-        ori_img = ori_imgs[i]
-        ori_img[color_mask != 0] = ori_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
-        ori_img = ori_img.astype(np.uint8)
-        # cv2.imwrite('seg_{}.jpg'.format(i), ori_img)
+        # prepare to show det on 2 different imgs
+        # (with and without seg) -> (full and det_only)
+        det_only_imgs.append(ori_imgs[i].copy())
+        seg_img = ori_imgs[i]
+        seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
+        seg_img = seg_img.astype(np.uint8)
+        if show_seg:
+          cv2.imwrite(f'test/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
 
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
@@ -113,7 +121,6 @@ with torch.no_grad():
         if len(out[i]['rois']) == 0:
             continue
 
-        ori_imgs[i] = ori_imgs[i].copy()
         out[i]['rois'] = scale_coords(ori_imgs[i][:2], out[i]['rois'], shapes[i][0], shapes[i][1])
         for j in range(len(out[i]['rois'])):
             x1, y1, x2, y2 = out[i]['rois'][j].astype(np.int)
@@ -121,13 +128,16 @@ with torch.no_grad():
             score = float(out[i]['scores'][j])
             plot_one_box(ori_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
                          color=color_list[get_index_label(obj, obj_list)])
+            if show_det:
+              plot_one_box(det_only_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
+                            color=color_list[get_index_label(obj, obj_list)])
+              cv2.imwrite(f'test/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
 
         if imshow:
             cv2.imshow('img', ori_imgs[i])
             cv2.waitKey(0)
 
         if imwrite:
-            os.makedirs('test', exist_ok=True)
             cv2.imwrite(f'test/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
 
 # exit()
@@ -136,6 +146,7 @@ with torch.no_grad():
     print('test1: model inferring and postprocessing')
     print('inferring image for 10 times...')
     x = x[0, ...]
+    x.unsqueeze_(0)
     t1 = time.time()
     for _ in range(10):
         _, regression, classification, anchors, segmentation = model(x)
