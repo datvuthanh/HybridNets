@@ -27,12 +27,12 @@ threshold = 0.25
 iou_threshold = 0.3
 imshow = False
 imwrite = False
-show_det = True
+show_det = False
 show_seg = False
 os.makedirs('test', exist_ok=True)
 
-use_cuda = False
-use_float16 = False
+use_cuda = True
+use_float16 = True
 cudnn.fastest = True
 cudnn.benchmark = True
 
