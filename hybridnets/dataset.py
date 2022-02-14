@@ -299,18 +299,22 @@ class BddDataset(Dataset):
 
         _, seg1 = cv2.threshold(seg_label, 1, 255, cv2.THRESH_BINARY)
         _, lane1 = cv2.threshold(lane_label, 1, 255, cv2.THRESH_BINARY)
+        # prefer lane
+        seg1 = seg1 - (seg1 & lane1)
+
         union = seg1 | lane1
         # print(union.shape)
         background = 255 - union
 
-        # print(img.shape)
-        # print(lane1.shape)
-        # img_copy = img.copy()
-        # img_copy[lane1 == 255] = (0, 255, 0)
-        # cv2.imwrite('seg_gt/' + data['image'].split('/')[-1], img_copy)
-        # cv2.imwrite('background.jpg', background)
-        # cv2.imwrite('lane1.jpg',lane1)
-        # cv2.imwrite('seg1.jpg',seg1)
+        #         print(img.shape)
+        #         print(lane1.shape)
+        #         img_copy = img.copy()
+        #         img_copy[lane1 == 255] = (0, 255, 0)
+        #         cv2.imwrite('seg_gt/' + data['image'].split('/')[-1], img_copy)
+        #         cv2.imwrite('background.jpg', background)
+        #         cv2.imwrite('{}.jpg'.format(data['image'].split('/')[-1]), img)
+        #         cv2.imwrite('{}-lane.jpg'.format(data['image'].split('/')[-1]),lane1)
+        #         cv2.imwrite('{}-seg.jpg'.format(data['image'].split('/')[-1]),seg1)
 
         seg1 = self.Tensor(seg1)
         lane1 = self.Tensor(lane1)
