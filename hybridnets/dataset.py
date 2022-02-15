@@ -9,6 +9,7 @@ from torch.utils.data import Dataset
 from utils.utils import letterbox, augment_hsv, random_perspective
 from tqdm.autonotebook import tqdm
 import json
+import albumentations as A
 
 
 class BddDataset(Dataset):
@@ -49,6 +50,16 @@ class BddDataset(Dataset):
         self.rotation_factor = params.dataset['rot_factor']
         self.flip = params.dataset['flip']
         self.color_rgb = params.dataset['color_rgb']
+        self.albumentations_transform = A.Compose([
+            A.Blur(p=0.01),
+            A.MedianBlur(p=0.01),
+            A.ToGray(p=0.01),
+            A.CLAHE(p=0.01),
+            A.RandomBrightnessContrast(p=0.01),
+            A.RandomGamma(p=0.01),
+            A.ImageCompression(quality_lower=75, p=0.01)],
+            bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']),
+            additional_targets={'mask0': 'mask'})
 
         # bdd_labels = {
         # 'unlabeled':0, 'dynamic': 1, 'ego vehicle': 2, 'ground': 3,
@@ -225,6 +236,14 @@ class BddDataset(Dataset):
 
         # print(labels[:, 1:4])
         if self.is_train:
+            # albumentations
+            new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label, bboxes=labels[:, 1:],
+                                                class_labels=labels[:, 0])
+            img = new['image']
+            labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
+            seg_label = new['mask']
+            lane_label = new['mask0']
+
             # augmentation
             combination = (img, seg_label, lane_label)
             (img, seg_label, lane_label), labels = random_perspective(
