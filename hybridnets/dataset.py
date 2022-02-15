@@ -237,12 +237,15 @@ class BddDataset(Dataset):
         # print(labels[:, 1:4])
         if self.is_train:
             # albumentations
-            new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label, bboxes=labels[:, 1:],
-                                                class_labels=labels[:, 0])
-            img = new['image']
-            labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
-            seg_label = new['mask']
-            lane_label = new['mask0']
+            try:
+                new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label, bboxes=labels[:, 1:],
+                                                    class_labels=labels[:, 0])
+                img = new['image']
+                labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
+                seg_label = new['mask']
+                lane_label = new['mask0']
+            except ValueError:  # bbox have width or height == 0
+                pass
 
             # augmentation
             combination = (img, seg_label, lane_label)

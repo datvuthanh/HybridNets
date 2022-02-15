@@ -27,7 +27,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
     plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
     s = ('%15s' + '%11s' * 12) % (
-    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'rIoU', 'rF1', 'lIoU', 'lF1')
+    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
     dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(3)]
     f1_ls = [[] for _ in range(3)]
@@ -114,21 +114,21 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                 # batch_size, num_classes, height, width
                 _, segmentation = torch.max(segmentation, 1)
                 # _, seg_annot = torch.max(seg_annot, 1)
-                for i in range(len(params.seg_list) + 1 ):
-                    seg = torch.zeros((seg_annot.size(0),1,384,640), dtype=torch.int32)
-                    # seg = segmentation[i] #.round()
-                    # create 3 tensor 0 1
-                    seg[:, 0, ...][segmentation == i] = 1
-                    tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(),
-                                                        seg_annot[:, i, ...].unsqueeze(
-                                                                1).long().cuda(),
-                                                        mode='binary')
+                seg = torch.zeros((seg_annot.size(0), 3, 384, 640), dtype=torch.int32)
+                seg[:, 0, ...][segmentation == 0] = 1
+                seg[:, 1, ...][segmentation == 1] = 1
+                seg[:, 2, ...][segmentation == 2] = 1
 
-                    iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-                    f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+                tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
+                                                                       mode='multilabel', threshold=None)
 
-                    iou_ls[i].append(iou.detach().cpu().numpy())
-                    f1_ls[i].append(f1.detach().cpu().numpy())
+                iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+                #         print(iou)
+                f1 = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+
+                for i in range(len(params.seg_list) + 1):
+                    iou_ls[i].append(iou.T[i].detach().cpu().numpy())
+                    f1_ls[i].append(f1.T[i].detach().cpu().numpy())
 
         loss = cls_loss + reg_loss + seg_loss
         if loss == 0 or not torch.isfinite(loss):
@@ -156,6 +156,12 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         iou_score = np.mean(iou_ls)
         # print(iou_score)
         f1_score = np.mean(f1_ls)
+
+        iou_first_decoder = iou_ls[0] + iou_ls[1]
+        iou_first_decoder = np.mean(iou_first_decoder)
+
+        iou_second_decoder = iou_ls[0] + iou_ls[2]
+        iou_second_decoder = np.mean(iou_second_decoder)
 
         for i in range(len(params.seg_list) + 1):
             iou_ls[i] = np.mean(iou_ls[i])
@@ -185,8 +191,8 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
 
         # Print results
         print(s)
-        pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
-        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
+        pf = '%15s' + '%11i' * 2 + '%11.3g' * 12  # print format
+        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score, iou_first_decoder, iou_second_decoder,
                     iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
         # Print results per class
@@ -245,7 +251,7 @@ def val_from_cmd(model, val_generator, params):
     plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
     s = ('%15s' + '%11s' * 12) % (
-    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'rIoU', 'rF1', 'lIoU', 'lF1')
+    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
     dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(3)]
     f1_ls = [[] for _ in range(3)]
@@ -353,48 +359,60 @@ def val_from_cmd(model, val_generator, params):
         # batch_size, num_classes, height, width
         _, segmentation = torch.max(segmentation, 1)
 #         _, seg_annot = torch.max(seg_annot, 1)
-        for i in range(len(params.seg_list) + 1 ):
-            seg = torch.zeros((seg_annot.size(0),1,384,640), dtype=torch.int32)
-    #         seg = segmentation[i] #.round()
-            # create 3 tensor 0 1
-            seg[:, 0, ...][segmentation == i] = 1
-            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(),
-                                                                    seg_annot[:, i, ...].unsqueeze(
-                                                                        1).long().cuda(),
-                                                                    mode='binary')            
+        seg = torch.zeros((seg_annot.size(0), 3, 384, 640), dtype=torch.int32)
+        seg[:, 0, ...][segmentation == 0] = 1
+        seg[:, 1, ...][segmentation == 1] = 1
+        seg[:, 2, ...][segmentation == 2] = 1
 
-            iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-            f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
+        tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(), mode='multilabel',
+                                                               threshold=None)
 
-            iou_ls[i].append(iou.detach().cpu().numpy())
-            f1_ls[i].append(f1.detach().cpu().numpy())
-        
-        
-#         exit()
-            
-            
-                    
+        iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+        #         print(iou)
+        f1 = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
 
-#         for i in range(len(params.seg_list) + 1):
-#             print(segmentation.size())
-#             exit()
-#             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation[:, i, ...].unsqueeze(1).cuda(),
-#                                                                     seg_annot[:, i, ...].unsqueeze(
-#                                                                         1).round().long().cuda(),
-#                                                                     mode='binary', threshold=0.5)
+        for i in range(len(params.seg_list) + 1):
+            iou_ls[i].append(iou.T[i].detach().cpu().numpy())
+            f1_ls[i].append(f1.T[i].detach().cpu().numpy())
 
-#             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-#             # print("I", i , iou)
-#             f1 = smp_metrics.f1_score(tp_seg, fp_seg, fn_seg, tn_seg).mean()
-
-#             iou_ls[i].append(iou.detach().cpu().numpy())
-#             f1_ls[i].append(f1.detach().cpu().numpy())
+        # Visualize
+        # for i in range(segmentation.size(0)):
+        #     if iou_ls[1][iter][i] < 0.4:
+        #         import cv2
+        #
+        #         ori = cv2.imread('datasets/bdd100k/val/{}'.format(filenames[i]))
+        #         cv2.imwrite('ori-segmentation-{}-{}.jpg'.format(iter,filenames[i]),ori)
+        #
+        #         gt = seg_annot[i].detach()
+        #         gt = torch.argmax(gt, dim = 0).cpu().numpy()
+        #
+        #         anh = np.zeros((384,640,3))
+        #         anh[gt == 0] = (255,0,0)
+        #         anh[gt == 1] = (0,255,0)
+        #         anh[gt == 2] = (0,0,255)
+        #         cv2.imwrite('gt-segmentation-{}-{}.jpg'.format(iter,filenames[i]),anh)
+        #
+        #         seg_0 = seg[i]
+        #         seg_0 = torch.argmax(seg_0, dim = 0)
+        #         seg_0 = seg_0.cpu().numpy()
+        #         anh = np.zeros((384,640,3))
+        #         anh[seg_0 == 0] = (255,0,0)
+        #         anh[seg_0 == 1] = (0,255,0)
+        #         anh[seg_0 == 2] = (0,0,255)
+        #         anh = np.uint8(anh)
+        #         cv2.imwrite('segmentation-{}-{}.jpg'.format(iter,filenames[i]),anh)
 
     # print(len(iou_ls[0]))
     # print(iou_ls)
     iou_score = np.mean(iou_ls)
     # print(iou_score)
     f1_score = np.mean(f1_ls)
+
+    iou_first_decoder = iou_ls[0] + iou_ls[1]
+    iou_first_decoder = np.mean(iou_first_decoder)
+
+    iou_second_decoder = iou_ls[0] + iou_ls[2]
+    iou_second_decoder = np.mean(iou_second_decoder)
 
     for i in range(len(params.seg_list) + 1):
         iou_ls[i] = np.mean(iou_ls[i])
@@ -423,8 +441,8 @@ def val_from_cmd(model, val_generator, params):
 
     # Print results
     print(s)
-    pf = '%15s' + '%11i' * 2 + '%11.3g' * 10  # print format
-    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score,
+    pf = '%15s' + '%11i' * 2 + '%11.3g' * 12  # print format
+    print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score, iou_first_decoder, iou_second_decoder,
                 iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
     # Print results per class
@@ -439,6 +457,7 @@ def val_from_cmd(model, val_generator, params):
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         confusion_matrix.tp_fp()
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -477,8 +496,8 @@ if __name__ == "__main__":
     )
 
     model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
-                                     ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                                     seg_classes=len(params.seg_list))
+                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
+                               seg_classes=len(params.seg_list))
     
 #     print(model)
     try:
