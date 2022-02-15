@@ -238,10 +238,11 @@ class BddDataset(Dataset):
         if self.is_train:
             # albumentations
             try:
-                new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label, bboxes=labels[:, 1:],
-                                                    class_labels=labels[:, 0])
+                new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label,
+                                                    bboxes=labels[:, 1:] if len(labels) else labels,
+                                                    class_labels=labels[:, 0] if len(labels) else labels)
                 img = new['image']
-                labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
+                labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])]) if len(labels) else labels
                 seg_label = new['mask']
                 lane_label = new['mask0']
             except ValueError:  # bbox have width or height == 0
