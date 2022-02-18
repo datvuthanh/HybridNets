@@ -26,7 +26,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
     seen = 0
     plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
-    s = ('%15s' + '%11s' * 12) % (
+    s = ('%15s' + '%11s' * 14) % (
     'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
     dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(3)]
@@ -221,14 +221,14 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     'model': model,
                     'optimizer': optimizer.state_dict()}
             print("Saving checkpoint with best fitness", fi[0])
-            save_checkpoint(ckpt, opt.saved_path, f'hybridnets-d{opt.compound_coef}_best.pth')
+            save_checkpoint(ckpt, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
     else:
         # if not calculating map, save by best loss
         if loss + opt.es_min_delta < best_loss:
             best_loss = loss
             best_epoch = epoch
 
-            save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+            save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
 
     # Early stopping
     if epoch - best_epoch > opt.es_patience > 0:
@@ -250,7 +250,7 @@ def val_from_cmd(model, val_generator, params):
     seen = 0
     plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
-    s = ('%15s' + '%11s' * 12) % (
+    s = ('%15s' + '%11s' * 14) % (
     'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
     dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(3)]
@@ -501,9 +501,9 @@ if __name__ == "__main__":
     
 #     print(model)
     try:
-        model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(weights_path))
     except:
-        model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu'))['model'])
+        model.load_state_dict(torch.load(weights_path)['model'])
     model.requires_grad_(False)
 
 #     if params['num_gpus'] > 0:

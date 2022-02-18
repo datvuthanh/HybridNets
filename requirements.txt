@@ -1,7 +1,10 @@
+albumentations==1.1.0
+efficientnet_pytorch==0.7.1
 matplotlib==3.5.1
 numpy==1.21.2
-opencv_python==4.5.5.62
+opencv_python_headless==4.5.5.62
 prefetch_generator==1.0.1
+pretrainedmodels==0.7.4
 PyYAML==6.0
 scipy==1.7.3
 seaborn==0.11.2
