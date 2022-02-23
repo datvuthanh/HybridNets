@@ -27,11 +27,9 @@ anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
 
 threshold = 0.25
 iou_threshold = 0.3
-imshow = False
-imwrite = True
 
 use_cuda = True
-use_float16 = False
+use_float16 = True
 cudnn.fastest = True
 cudnn.benchmark = True
 
@@ -51,9 +49,9 @@ transform = transforms.Compose([
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
                            ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'), strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'))
 except:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'], strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'])
 model.requires_grad_(False)
 model.eval()
 
@@ -62,12 +60,13 @@ if use_cuda:
 if use_float16:
     model = model.half()
 cap = cv2.VideoCapture(video_src)
+t1 = time.time()
+frame_count = 0
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     h0, w0 = frame.shape[:2]  # orig hw
     r = resized_shape / max(h0, w0)  # resize image to img_size
     input_img = cv2.resize(frame, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
@@ -111,21 +110,23 @@ while True:
                           anchors, regression, classification,
                           regressBoxes, clipBoxes,
                           threshold, iou_threshold)
-
         out = out[0]
-        if len(out['rois']) == 0:
-            continue
-
         out['rois'] = scale_coords(frame[:2], out['rois'], shapes[0], shapes[1])
+        frame_mask = np.zeros_like(frame, np.uint8)
         for j in range(len(out['rois'])):
-            x1, y1, x2, y2 = out['rois'][j].astype(np.int)
+            x1, y1, x2, y2 = out['rois'][j].astype(int)
             obj = obj_list[out['class_ids'][j]]
             score = float(out['scores'][j])
-            plot_one_box(frame, [x1, y1, x2, y2], label=obj, score=score,
+            plot_one_box(frame_mask, [x1, y1, x2, y2], label=obj, score=score,
                          color=color_list[get_index_label(obj, obj_list)])
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        # make boxes have opacity of 0.5
+        frame = cv2.addWeighted(frame, 0.5, frame_mask, 0.5, 0)
         out_stream.write(frame)
+
+t2 = time.time()
+print("frame: {}".format(frame_count))
+print("second: {}".format(t2-t1))
+print("fps: {}".format((t2-t1)/frame_count))
 
 cap.release()
 out_stream.release()

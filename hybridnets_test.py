@@ -76,7 +76,7 @@ model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list
 try:
     model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'))
 except:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'], strict=False)
+    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'])
 model.requires_grad_(False)
 model.eval()
 
@@ -118,20 +118,23 @@ with torch.no_grad():
                       threshold, iou_threshold)
 
     for i in range(len(ori_imgs)):
-        if len(out[i]['rois']) == 0:
-            continue
-
         out[i]['rois'] = scale_coords(ori_imgs[i][:2], out[i]['rois'], shapes[i][0], shapes[i][1])
+        det_mask = np.zeros_like(ori_imgs[i], np.uint8)
         for j in range(len(out[i]['rois'])):
-            x1, y1, x2, y2 = out[i]['rois'][j].astype(np.int)
+            x1, y1, x2, y2 = out[i]['rois'][j].astype(int)
             obj = obj_list[out[i]['class_ids'][j]]
             score = float(out[i]['scores'][j])
-            plot_one_box(ori_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
+            plot_one_box(det_mask, [x1, y1, x2, y2], label=obj, score=score,
                          color=color_list[get_index_label(obj, obj_list)])
             if show_det:
-              plot_one_box(det_only_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
-                            color=color_list[get_index_label(obj, obj_list)])
-              cv2.imwrite(f'test/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
+                plot_one_box(det_only_imgs[i], [x1, y1, x2, y2], label=obj, score=score,
+                             color=color_list[get_index_label(obj, obj_list)])
+        # make boxes have opacity of 0.5
+        ori_imgs[i] = cv2.addWeighted(ori_imgs[i], 0.5, det_mask, 0.5, 0)
+        det_only_imgs[i] = cv2.addWeighted(det_only_imgs[i], 0.5, det_mask, 0.5, 0)
+
+        if show_det:
+            cv2.imwrite(f'test/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
 
         if imshow:
             cv2.imshow('img', ori_imgs[i])
