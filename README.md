@@ -148,3 +148,16 @@ Please check `python train.py --help` for all available arguments.
 ```bash
 python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 ```
+
+## Citation
+
+If you find our paper and code useful for your research, please consider giving a star :star:   and citation :pencil: :
+
+```BibTeX
+@misc{2108.11250,
+Author = {Dong Wu and Manwen Liao and Weitian Zhang and Xinggang Wang},
+Title = {YOLOP: You Only Look Once for Panoptic Driving Perception},
+Year = {2021},
+Eprint = {arXiv:2108.11250},
+}
+```
