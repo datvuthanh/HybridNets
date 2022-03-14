@@ -10,13 +10,12 @@
 [![PyPI](https://img.shields.io/pypi/v/segmentation-models-pytorch?color=blue&style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/search/?q=segmentation-models-pytorch) 
 [![PyTorch - Version](https://img.shields.io/badge/PYTORCH-1.4+-red?style=for-the-badge&logo=pytorch)](https://pepy.tech/project/segmentation-models-pytorch) 
 [![Python - Version](https://img.shields.io/badge/PYTHON-3.6+-red?style=for-the-badge&logo=python&logoColor=white)](https://pepy.tech/project/segmentation-models-pytorch)
-<!-- [![Contributors][contributors-shield]][contributors-url]
+[![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
-  -->
  
 </div>
 
@@ -214,8 +213,6 @@ Use this space to list resources you find helpful and would like to give credit 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-
-
 ## Citation
 
 If you find our paper and code useful for your research, please consider giving a star :star:   and citation :pencil: :
@@ -228,6 +225,8 @@ Year = {2021},
 Eprint = {arXiv:2108.11250},
 }
 ```
+ 
+<p align="right">(<a href="#top">back to top</a>)</p>
 
  
  
