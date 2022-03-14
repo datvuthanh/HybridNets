@@ -1,5 +1,25 @@
 # HybridNets: End2End Perception Network
 
+
+<div align="center">
+ 
+![logo](https://i.ibb.co/dc1XdhT/Segmentation-Models-V2-Side-1-1.png)  
+**Python library with Neural Networks for Image  
+Segmentation based on [PyTorch](https://pytorch.org/).**  
+
+[![Generic badge](https://img.shields.io/badge/License-MIT-<COLOR>.svg?style=for-the-badge)](https://github.com/qubvel/segmentation_models.pytorch/blob/master/LICENSE) 
+[![GitHub Workflow Status (branch)](https://img.shields.io/github/workflow/status/qubvel/segmentation_models.pytorch/CI/master?style=for-the-badge&logo=github)](https://github.com/qubvel/segmentation_models.pytorch/actions/workflows/tests.yml) 
+[![Read the Docs](https://img.shields.io/readthedocs/smp?style=for-the-badge&logo=readthedocs&logoColor=white)](https://smp.readthedocs.io/en/latest/) 
+<br>
+[![PyPI](https://img.shields.io/pypi/v/segmentation-models-pytorch?color=blue&style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/search/?q=segmentation-models-pytorch) 
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/segmentation-models-pytorch?style=for-the-badge&color=blue)](https://pepy.tech/project/segmentation-models-pytorch) 
+<br>
+[![PyTorch - Version](https://img.shields.io/badge/PYTORCH-1.4+-red?style=for-the-badge&logo=pytorch)](https://pepy.tech/project/segmentation-models-pytorch) 
+[![Python - Version](https://img.shields.io/badge/PYTHON-3.6+-red?style=for-the-badge&logo=python&logoColor=white)](https://pepy.tech/project/segmentation-models-pytorch) 
+
+</div>
+    
+    
 1) In readme we introduce all features we add 
 2) Share tips for training
 3) FAQs
