@@ -26,11 +26,6 @@
 >
 > *arXiv technical report ([arXiv 2108.11250](https://arxiv.org/abs/2108.11250))*
     
-1) In readme we introduce all features we add 
-2) Share tips for training
-3) FAQs
-4) Acknowledgement (EfficientDet, Yolov5, YolOP, kmeans ratio, anchor visualize cli98) 
-5) We will use template yolov5 for our readme
  
 <!-- TABLE OF CONTENTS -->
 <details>
@@ -180,7 +175,9 @@ Please check `python train.py --help` for all available arguments.
 ```bash
 python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 ```
- 
+
+## Training Tips
+ gdfgfdg
 <!-- LICENSE -->
 ## License
 
