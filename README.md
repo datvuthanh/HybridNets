@@ -183,13 +183,6 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 
 Distributed under the MIT License. See `LICENSE` for more information.
  
-<!-- CONTACT -->
-## Contact
-
-Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
-
-Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
- 
 ## Acknowledgments
 
 Our work would not be complete without the wonderful work of the following authors:
