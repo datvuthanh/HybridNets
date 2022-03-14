@@ -165,3 +165,6 @@ Year = {2021},
 Eprint = {arXiv:2108.11250},
 }
 ```
+ 
+## 🛡️ License <a name="license"></a>
+Project is distributed under [MIT License](https://github.com/datvuthanh/HybridNets/blob/main/LICENSE)
