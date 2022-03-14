@@ -67,6 +67,7 @@ while True:
     if not ret:
         break
 
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     h0, w0 = frame.shape[:2]  # orig hw
     r = resized_shape / max(h0, w0)  # resize image to img_size
     input_img = cv2.resize(frame, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
@@ -112,16 +113,13 @@ while True:
                           threshold, iou_threshold)
         out = out[0]
         out['rois'] = scale_coords(frame[:2], out['rois'], shapes[0], shapes[1])
-        frame_mask = np.zeros_like(frame, np.uint8)
         for j in range(len(out['rois'])):
             x1, y1, x2, y2 = out['rois'][j].astype(int)
             obj = obj_list[out['class_ids'][j]]
             score = float(out['scores'][j])
-            plot_one_box(frame_mask, [x1, y1, x2, y2], label=obj, score=score,
+            plot_one_box(frame, [x1, y1, x2, y2], label=obj, score=score,
                          color=color_list[get_index_label(obj, obj_list)])
-        # make boxes have opacity of 0.5
-        frame = cv2.addWeighted(frame, 0.5, frame_mask, 0.5, 0)
-        out_stream.write(frame)
+        out_stream.write(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
 t2 = time.time()
 print("frame: {}".format(frame_count))

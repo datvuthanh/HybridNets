@@ -9,7 +9,7 @@ from hybridnets.model import SegmentationHead
 from encoders import get_encoder
 
 class HybridNetsBackbone(nn.Module):
-    def __init__(self, num_classes=80, compound_coef=0, seg_classes = 1, **kwargs):
+    def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, **kwargs):
         super(HybridNetsBackbone, self).__init__()
         self.compound_coef = compound_coef
 
@@ -73,16 +73,18 @@ class HybridNetsBackbone(nn.Module):
                                pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
                                **kwargs)
 
-        # Use timm to create another backbone that you prefer
-        # https://github.com/rwightman/pytorch-image-models
-#         self.encoder = timm.create_model('efficientnet_b' + str(compound_coef), pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
-        # EfficientNet_Pytorch
-        self.encoder = get_encoder(
-            'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
-            in_channels=3,
-            depth=5,
-            weights='imagenet',
-        )
+        if backbone_name:
+            # Use timm to create another backbone that you prefer
+            # https://github.com/rwightman/pytorch-image-models
+            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
+        else:
+            # EfficientNet_Pytorch
+            self.encoder = get_encoder(
+                'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
+                in_channels=3,
+                depth=5,
+                weights='imagenet',
+            )
     
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_head(self.segmentation_head)

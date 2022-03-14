@@ -6,7 +6,7 @@ import os
 
 from utils import smp_metrics
 from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
-    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes
+    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string
 from backbone import HybridNetsBackbone
 from hybridnets.dataset import BddDataset
 from torchvision import transforms
@@ -22,9 +22,9 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
     jdict, stats, ap, ap_class = [], [], [], []
     iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
     num_thresholds = iou_thresholds.numel()
-    nc = 1
+    names = {i: v for i, v in enumerate(params.obj_list)}
+    nc = len(names)
     seen = 0
-    plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
     s = ('%15s' + '%11s' * 14) % (
     'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
@@ -41,7 +41,6 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         seg_annot = data['segmentation']
         filenames = data['filenames']
         shapes = data['shapes']
-
 
         if params.num_gpus == 1:
             imgs = imgs.cuda()
@@ -87,7 +86,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     pred[:, :4] = scale_coords(imgs[i][1:], pred[:, :4], shapes[i][0], shapes[i][1])
                     labels = scale_coords(imgs[i][1:], labels, shapes[i][0], shapes[i][1])
                     correct = process_batch(pred, labels, iou_thresholds)
-                    if plots:
+                    if opt.plots:
                         confusion_matrix.process_batch(pred, labels)
                 else:
                     correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
@@ -110,25 +109,25 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                 # anh = np.uint8(anh)
                 # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
 
-                # Convert segmentaiton tensor --> 3 binary 0 1
-                # batch_size, num_classes, height, width
-                _, segmentation = torch.max(segmentation, 1)
-                # _, seg_annot = torch.max(seg_annot, 1)
-                seg = torch.zeros((seg_annot.size(0), 3, 384, 640), dtype=torch.int32)
-                seg[:, 0, ...][segmentation == 0] = 1
-                seg[:, 1, ...][segmentation == 1] = 1
-                seg[:, 2, ...][segmentation == 2] = 1
+            # Convert segmentation tensor --> 3 binary 0 1
+            # batch_size, num_classes, height, width
+            _, segmentation = torch.max(segmentation, 1)
+            # _, seg_annot = torch.max(seg_annot, 1)
+            seg = torch.zeros((seg_annot.size(0), 3, 384, 640), dtype=torch.int32)
+            seg[:, 0, ...][segmentation == 0] = 1
+            seg[:, 1, ...][segmentation == 1] = 1
+            seg[:, 2, ...][segmentation == 2] = 1
 
-                tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
-                                                                       mode='multilabel', threshold=None)
+            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
+                                                                   mode='multilabel', threshold=None)
 
-                iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
-                #         print(iou)
-                f1 = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+            iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+            #         print(iou)
+            f1 = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
 
-                for i in range(len(params.seg_list) + 1):
-                    iou_ls[i].append(iou.T[i].detach().cpu().numpy())
-                    f1_ls[i].append(f1.T[i].detach().cpu().numpy())
+            for i in range(len(params.seg_list) + 1):
+                iou_ls[i].append(iou.T[i].detach().cpu().numpy())
+                f1_ls[i].append(f1.T[i].detach().cpu().numpy())
 
         loss = cls_loss + reg_loss + seg_loss
         if loss == 0 or not torch.isfinite(loss):
@@ -176,13 +175,11 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
 
         ap50 = None
         save_dir = 'plots'
-        os.makedirs(save_dir, exist_ok=True) 
-        names = {
-            0: 'car'
-        }
+        os.makedirs(save_dir, exist_ok=True)
+
         # Compute metrics
         if len(stats) and stats[0].any():
-            p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
+            p, r, f1, ap, ap_class = ap_per_class(*stats, plot=opt.plots, save_dir=save_dir, names=names)
             ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
             mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
             nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
@@ -196,15 +193,13 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
                     iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
         # Print results per class
-        verbose = True
-        training = False
-        nc = 1
-        if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+        training = True
+        if (opt.verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
             for i, c in enumerate(ap_class):
                 print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
         # Plots
-        if plots:
+        if opt.plots:
             confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
             confusion_matrix.tp_fp()
 
@@ -241,14 +236,14 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
 
 
 @torch.no_grad()
-def val_from_cmd(model, val_generator, params):
+def val_from_cmd(model, val_generator, params, opt):
     model.eval()
     jdict, stats, ap, ap_class = [], [], [], []
     iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
     num_thresholds = iou_thresholds.numel()
-    nc = 1
+    names = {i: v for i, v in enumerate(params.obj_list)}
+    nc = len(names)
     seen = 0
-    plots = True
     confusion_matrix = ConfusionMatrix(nc=nc)
     s = ('%15s' + '%11s' * 14) % (
     'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
@@ -265,7 +260,6 @@ def val_from_cmd(model, val_generator, params):
         seg_annot = data['segmentation']
         filenames = data['filenames']
         shapes = data['shapes']
-
 
         if params.num_gpus == 1:
             imgs = imgs.cuda()
@@ -332,7 +326,7 @@ def val_from_cmd(model, val_generator, params):
 
                 # cv2.imwrite('pre+label-{}.jpg'.format(filenames[i]), ori_img)
                 correct = process_batch(pred, labels, iou_thresholds)
-                if plots:
+                if opt.plots:
                     confusion_matrix.process_batch(pred, labels)
             else:
                 correct = torch.zeros(pred.shape[0], num_thresholds, dtype=torch.bool)
@@ -355,7 +349,7 @@ def val_from_cmd(model, val_generator, params):
             # anh = np.uint8(anh)
             # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
             
-        # Convert segmentaiton tensor --> 3 binary 0 1
+        # Convert segmentation tensor --> 3 binary 0 1
         # batch_size, num_classes, height, width
         _, segmentation = torch.max(segmentation, 1)
 #         _, seg_annot = torch.max(seg_annot, 1)
@@ -426,13 +420,11 @@ def val_from_cmd(model, val_generator, params):
 
     ap50 = None
     save_dir = 'plots'
-    os.makedirs(save_dir, exist_ok=True) 
-    names = {
-        0: 'car'
-    }
+    os.makedirs(save_dir, exist_ok=True)
+
     # Compute metrics
     if len(stats) and stats[0].any():
-        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
+        p, r, f1, ap, ap_class = ap_per_class(*stats, plot=opt.plots, save_dir=save_dir, names=names)
         ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
         nt = np.bincount(stats[3].astype(np.int64), minlength=1)  # number of targets per class
@@ -446,15 +438,13 @@ def val_from_cmd(model, val_generator, params):
                 iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
 
     # Print results per class
-    verbose = True
     training = False
-    nc = 1
-    if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+    if (opt.verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Plots
-    if plots:
+    if opt.plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
         confusion_matrix.tp_fp()
 
@@ -465,6 +455,11 @@ if __name__ == "__main__":
     ap.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
     ap.add_argument('-w', '--weights', type=str, default=None, help='/path/to/weights')
     ap.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
+    ap.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
+    ap.add_argument('-v', '--verbose', type=boolean_string, default=True,
+                    help='Whether to print results per class when valing')
+    ap.add_argument('--plots', type=boolean_string, default=True,
+                        help='Whether to plot confusion matrix when valing')
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
@@ -488,7 +483,7 @@ if __name__ == "__main__":
 
     val_generator = DataLoaderX(
         valid_dataset,
-        batch_size=2,
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=params.pin_memory,
@@ -506,7 +501,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(weights_path)['model'])
     model.requires_grad_(False)
 
-#     if params['num_gpus'] > 0:
-    model.cuda()
+    if params['num_gpus'] > 0:
+        model.cuda()
 
-    val_from_cmd(model, val_generator, params)
+    val_from_cmd(model, val_generator, params, args)

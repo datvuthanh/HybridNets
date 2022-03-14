@@ -5,12 +5,10 @@ import traceback
 
 import numpy as np
 import torch
-import yaml
 from tensorboardX import SummaryWriter
 from torch import nn
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
-# from torchinfo import summary
 
 from val import val
 from backbone import HybridNetsBackbone
@@ -27,7 +25,7 @@ from utils.utils import Params
 def get_args():
     parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
     parser.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
-    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
+    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficient of efficientnet backbone')
     parser.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
     parser.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
@@ -46,17 +44,23 @@ def get_args():
     parser.add_argument('--es_min_delta', type=float, default=0.0,
                         help='Early stopping\'s parameter: minimum change loss to qualify as an improvement')
     parser.add_argument('--es_patience', type=int, default=0,
-                        help='Early stopping\'s parameter: number of epochs with no improvement after which training will be stopped. Set to 0 to disable this technique.')
+                        help='Early stopping\'s parameter: number of epochs with no improvement after which '
+                             'training will be stopped. Set to 0 to disable this technique')
     parser.add_argument('--data_path', type=str, default='datasets/', help='The root folder of dataset')
     parser.add_argument('--log_path', type=str, default='checkpoints/')
     parser.add_argument('-w', '--load_weights', type=str, default=None,
-                        help='Whether to load weights from a checkpoint, set None to initialize, set \'last\' to load last checkpoint')
+                        help='Whether to load weights from a checkpoint, set None to initialize,'
+                             'set \'last\' to load last checkpoint')
     parser.add_argument('--saved_path', type=str, default='checkpoints/')
     parser.add_argument('--debug', type=boolean_string, default=False,
                         help='Whether visualize the predicted boxes of training, '
                              'the output images will be in test/')
     parser.add_argument('--cal_map', type=boolean_string, default=True,
-                        help='Calculate map in validation')
+                        help='Calculate mAP in validation')
+    parser.add_argument('-v', '--verbose', type=boolean_string, default=True,
+                        help='Whether to print results per class when valing')
+    parser.add_argument('--plots', type=boolean_string, default=True,
+                        help='Whether to plot confusion matrix when valing')
 
     args = parser.parse_args()
     return args
@@ -231,9 +235,6 @@ def train(opt):
         model.apply(freeze_seg)
         print('[Info] freezed segmentation head')
 
-    # summary(model, input_size=(1, 3, 384, 640))
-    # exit()
-
     # https://github.com/vacancy/Synchronized-BatchNorm-PyTorch
     # apply sync_bn when using multiple gpu and batch_size per gpu is lower than 4
     #  useful when gpu memory is limited.
@@ -350,9 +351,9 @@ def train(opt):
                 best_fitness, best_loss, best_epoch = val(model, optimizer, val_generator, params, opt, writer, epoch,
                                                           step, best_fitness, best_loss, best_epoch)
     except KeyboardInterrupt:
-        # save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+    finally:
         writer.close()
-    writer.close()
 
 
 if __name__ == '__main__':
