@@ -12,7 +12,14 @@
 [![Python - Version](https://img.shields.io/badge/PYTHON-3.6+-red?style=for-the-badge&logo=python&logoColor=white)](https://pepy.tech/project/segmentation-models-pytorch) 
 
 </div>
-    
+
+> [**You Only Look at Once for Panoptic driving Perception**](https://arxiv.org/abs/2108.11250)
+>
+> by Dong Wu, Manwen Liao, Weitian Zhang, [Xinggang Wang](https://xinggangw.info/)<sup> :email:</sup>     [*School of EIC, HUST*](http://eic.hust.edu.cn/English/Home.htm)
+>
+>  (<sup>:email:</sup>) corresponding author.
+>
+> *arXiv technical report ([arXiv 2108.11250](https://arxiv.org/abs/2108.11250))*
     
 1) In readme we introduce all features we add 
 2) Share tips for training
