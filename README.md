@@ -4,8 +4,7 @@
 <div align="center">
  
 ![logo](demo/hybridnets_architecture.png)  
-**Python library with Neural Networks for Image  
-Segmentation based on [PyTorch](https://pytorch.org/).**  
+**HybridNets Network Architecture.**  
 
 [![Generic badge](https://img.shields.io/badge/License-MIT-<COLOR>.svg?style=for-the-badge)](https://github.com/qubvel/segmentation_models.pytorch/blob/master/LICENSE) 
 [![GitHub Workflow Status (branch)](https://img.shields.io/github/workflow/status/qubvel/segmentation_models.pytorch/CI/master?style=for-the-badge&logo=github)](https://github.com/qubvel/segmentation_models.pytorch/actions/workflows/tests.yml) 
