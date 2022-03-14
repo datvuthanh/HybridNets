@@ -184,9 +184,7 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 <!-- LICENSE -->
 ## License
 
-Distributed under the MIT License. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#top">back to top</a>)</p>
+Distributed under the MIT License. See `LICENSE` for more information.
  
 <!-- CONTACT -->
 ## Contact
@@ -194,8 +192,6 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 Your Name - [@your_twitter](https://twitter.com/your_username) - email@example.com
 
 Project Link: [https://github.com/your_username/repo_name](https://github.com/your_username/repo_name)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
  
 ## Acknowledgments
 
@@ -206,8 +202,6 @@ Our work would not be complete without the wonderful work of the following autho
 * [YOLOP](https://github.com/hustvl/YOLOP)
 * [KMeans Anchors Ratios](https://github.com/mnslarcher/kmeans-anchors-ratios)
 * [Anchor Computation Tool](https://github.com/Cli98/anchor_computation_tool)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Citation
 
@@ -221,10 +215,6 @@ Year = {2021},
 Eprint = {arXiv:2108.11250},
 }
 ```
- 
-<p align="right">(<a href="#top">back to top</a>)</p>
-
- 
  
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
