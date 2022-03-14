@@ -6,15 +6,16 @@ from matplotlib import colors
 from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
-import glob
+from glob import glob
 from utils.utils import letterbox, scale_coords, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, \
     plot_one_box, BBoxTransform, ClipBoxes
 import os
 from torchvision import transforms
 
 compound_coef = 3
-video_src = '1.mp4'
-video_out = 'output.mp4'
+video_src = glob.glob('./demo/demo.mp4')
+os.makedirs('demo_result', exist_ok=True)
+video_out = 'demo_result/output.mp4'
 # Define the codec and create VideoWriter object
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out_stream = cv2.VideoWriter(video_out, fourcc, 30.0, (1920, 1080))

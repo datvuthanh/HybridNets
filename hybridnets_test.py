@@ -6,14 +6,14 @@ from matplotlib import colors
 from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
-import glob
+from glob import glob
 from utils.utils import letterbox, scale_coords, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, \
     plot_one_box, BBoxTransform, ClipBoxes
 import os
 from torchvision import transforms
 
 compound_coef = 3
-img_path = [path for path in glob.glob('./demo_imgs/*.jpg')]
+img_path = glob('./demo/*.jpg') + glob('./demo/*.png')
 # img_path = [img_path[0]]  # demo with 1 image
 input_imgs = []
 shapes = []
@@ -26,10 +26,10 @@ anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
 threshold = 0.25
 iou_threshold = 0.3
 imshow = False
-imwrite = False
+imwrite = True
 show_det = False
 show_seg = False
-os.makedirs('test', exist_ok=True)
+os.makedirs('demo_result', exist_ok=True)
 
 use_cuda = True
 use_float16 = True
@@ -108,7 +108,7 @@ with torch.no_grad():
         seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
         seg_img = seg_img.astype(np.uint8)
         if show_seg:
-          cv2.imwrite(f'test/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
+          cv2.imwrite(f'demo_result/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
 
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
@@ -130,14 +130,14 @@ with torch.no_grad():
                              color=color_list[get_index_label(obj, obj_list)])
 
         if show_det:
-            cv2.imwrite(f'test/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
+            cv2.imwrite(f'demo_result/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
 
         if imshow:
             cv2.imshow('img', ori_imgs[i])
             cv2.waitKey(0)
 
         if imwrite:
-            cv2.imwrite(f'test/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
+            cv2.imwrite(f'demo_result/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
 
 # exit()
 print('running speed test...')
