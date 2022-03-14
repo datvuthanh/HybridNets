@@ -3,7 +3,7 @@
 
 <div align="center">
  
-![logo](https://i.ibb.co/dc1XdhT/Segmentation-Models-V2-Side-1-1.png)  
+![logo](demo/hybridnets_architecture.png)  
 **Python library with Neural Networks for Image  
 Segmentation based on [PyTorch](https://pytorch.org/).**  
 
