@@ -109,7 +109,7 @@ dataset:
 ...
 ```
 
-### 2) Training command
+### 2) Train
 ```bash
 python train.py -p bdd100k        # your_project_name
                 -c 3              # coefficient of effnet backbone, result from paper is 3
@@ -122,3 +122,8 @@ python train.py -p bdd100k        # your_project_name
                 --num_epochs 200
 ```
 Please check `python train.py --help` for all available arguments.
+
+### 3) Evaluate
+```bash
+python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
+```
