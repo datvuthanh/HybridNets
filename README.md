@@ -26,6 +26,7 @@
 >
 > *arXiv technical report ([arXiv 2108.11250](https://arxiv.org/abs/2108.11250))*
     
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/yolop-you-only-look-once-for-panoptic-driving/traffic-object-detection-on-bdd100k)](https://paperswithcode.com/sota/traffic-object-detection-on-bdd100k?p=yolop-you-only-look-once-for-panoptic-driving)
  
 <!-- TABLE OF CONTENTS -->
 <details>
