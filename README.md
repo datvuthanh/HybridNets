@@ -192,6 +192,11 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
  
 ## Results
 #### Traffic Object Detection
+ 
+<table>
+<tr><th>Result </th><th>Visualization</th></tr>
+<tr><td>
+
 |        Model       |  Recall (%)  |   mAP@0.5 (%)   |
 |:------------------:|:------------:|:---------------:|
 |     `MultiNet`     |     81.3     |       60.2      |
@@ -200,8 +205,36 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 |      `YOLOv5s`     |     86.8     |       77.2      |
 |       `YOLOP`      |     89.2     |       76.5      |
 |  **`HybridNets`**  |   **92.8**   |     **77.3**    |
+
+</td><td>
+
+<img src="images/det1.jpg" width="50%" /><img src="images/det2.jpg" width="50%" />
+
+</td></tr> </table>
+ 
+<!--
+|        Model       |  Recall (%)  |   mAP@0.5 (%)   |
+|:------------------:|:------------:|:---------------:|
+|     `MultiNet`     |     81.3     |       60.2      |
+|      `DLT-Net`     |     89.4     |       68.4      |
+|   `Faster R-CNN`   |     77.2     |       55.6      |
+|      `YOLOv5s`     |     86.8     |       77.2      |
+|       `YOLOP`      |     89.2     |       76.5      |
+|  **`HybridNets`**  |   **92.8**   |     **77.3**    |
+
+<p align="middle">
+ <img src="images/det1.jpg" width="49%" />
+ <img src="images/det2.jpg" width="49%" /> 
+</p>
+
+-->
  
 #### Drivable Area Segmentation
+ 
+<table>
+<tr><th>Result </th><th>Visualization</th></tr>
+<tr><td>
+
 |       Model      | Drivable mIoU (%) |
 |:----------------:|:-----------------:|
 |    `MultiNet`    |        71.6       |
@@ -209,7 +242,48 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 |     `PSPNet`     |        89.6       |
 |      `YOLOP`     |        91.5       |
 | **`HybridNets`** |      **90.5**     |
+
+</td><td>
+
+<img src="images/road1.jpg" width="50%" /><img src="images/road2.jpg" width="50%" />
+
+</td></tr> </table>
+ 
+<!--
+|       Model      | Drivable mIoU (%) |
+|:----------------:|:-----------------:|
+|    `MultiNet`    |        71.6       |
+|     `DLT-Net`    |        71.3       |
+|     `PSPNet`     |        89.6       |
+|      `YOLOP`     |        91.5       |
+| **`HybridNets`** |      **90.5**     |
+<p align="middle">
+ <img src="images/road1.jpg" width="49%" />
+ <img src="images/road2.jpg" width="49%" /> 
+</p>
+-->
+ 
 #### Lane Line Detection
+ 
+<table>
+<tr><th>Result </th><th>Visualization</th></tr>
+<tr><td>
+
+|      Model       | Accuracy (%) | Lane Line IoU (%) |
+|:----------------:|:------------:|:-----------------:|
+|      `Enet`      |     34.12    |       14.64       |
+|      `SCNN`      |     35.79    |       15.84       |
+|    `Enet-SAD`    |     36.56    |       16.02       |
+|      `YOLOP`     |     70.5     |        26.2       |
+| **`HybridNets`** |   **85.4**   |      **31.6**     |
+
+</td><td>
+
+<img src="images/lane1.jpg" width="50%" /><img src="images/lane2.jpg" width="50%" />
+
+</td></tr> </table>
+ 
+<!--
 |      Model       | Accuracy (%) | Lane Line IoU (%) |
 |:----------------:|:------------:|:-----------------:|
 |      `Enet`      |     34.12    |       14.64       |
@@ -218,6 +292,11 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 |      `YOLOP`     |     70.5     |        26.2       |
 | **`HybridNets`** |   **85.4**   |      **31.6**     |
  
+<p align="middle">
+ <img src="images/lane1.jpg" width="49%" />
+ <img src="images/lane2.jpg" width="49%" /> 
+</p>
+-->
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
