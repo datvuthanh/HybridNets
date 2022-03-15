@@ -344,6 +344,8 @@ We experimented with training stages and found that this settings achieved the b
  
  ![](images/full_video.gif)
  
+ [Original footage](https://www.youtube.com/watch?v=lx4yA1LEi9c) courtesy of [Hanoi Life](https://www.youtube.com/channel/UChT1Cpf_URepCpsdIqjsDHQ)
+ 
  </div>
  
 ## License
