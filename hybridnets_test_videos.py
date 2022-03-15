@@ -16,7 +16,6 @@ import argparse
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
 parser.add_argument('--source', type=str, default='demo/video', help='The demo video folder')
-parser.add_argument('--source_res', type=int, default=1920, help='Input video resolution (1920, 1080, ...)')
 parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
 parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
 parser.add_argument('--nms_thresh', type=restricted_float, default='0.25')
@@ -36,9 +35,6 @@ weight = args.load_weights
 video_src = glob(f'{source}/*.mp4')[0]
 os.makedirs(output, exist_ok=True)
 video_out = f'{output}/output.mp4'
-# Define the codec and create VideoWriter object
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-out_stream = cv2.VideoWriter(video_out, fourcc, 30.0, (1920, 1080))
 input_imgs = []
 shapes = []
 
@@ -81,6 +77,10 @@ if use_cuda:
 if use_float16:
     model = model.half()
 cap = cv2.VideoCapture(video_src)
+# Define the codec and create VideoWriter object
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out_stream = cv2.VideoWriter(video_out, fourcc, 30.0,
+                             (cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
 t1 = time.time()
 frame_count = 0
 while True:
@@ -141,6 +141,7 @@ while True:
             plot_one_box(frame, [x1, y1, x2, y2], label=obj, score=score,
                          color=color_list[get_index_label(obj, obj_list)])
         out_stream.write(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        frame_count += 1
 
 t2 = time.time()
 print("frame: {}".format(frame_count))
