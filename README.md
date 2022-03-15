@@ -340,6 +340,12 @@ We experimented with training stages and found that this settings achieved the b
  <img src="images/lane2.jpg" width="49%" /> 
 </p>
 -->
+<div align="center">
+ 
+ ![](images/full_video.gif)
+ 
+ </div>
+ 
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
