@@ -188,10 +188,53 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 ```
 
 ## Training Tips
- gdfgfdg
+### Anchors :anchor:
+If your dataset is intrinsically different from COCO or BDD100K, or the metrics of detection after training are not as high as expected, you could try enabling autoanchor in `project.yml`:
+```python
+...
+model:
+  image_size:
+  - 640
+  - 384
+need_autoanchor: true  # set to true to run autoanchor
+pin_memory: false
+...
+```
+This automatically finds the best combination of anchor scales and anchor ratios for your dataset. Then you can manually edit them `project.yml` and disable autoanchor.
+ 
+If you're feeling lucky, maybe mess around with base_anchor_scale in `backbone.py`:
+```python
+class HybridNetsBackbone(nn.Module):
+  ...
+  self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
+  self.anchor_scale = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
+  self.aspect_ratios = kwargs.get('ratios', [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
+  ...
+```
+and `model.py`:
+```python
+class Anchors(nn.Module):
+  ...
+  for scale, ratio in itertools.product(self.scales, self.ratios):
+    base_anchor_size = self.anchor_scale * stride * scale
+    anchor_size_x_2 = base_anchor_size * ratio[0] / 2.0
+    anchor_size_y_2 = base_anchor_size * ratio[1] / 2.0
+  ...
+```
+to get a grasp on how anchor boxes work.
+ 
+And because a picture is worth a thousand words, you can visualize your anchor boxes in [Anchor Computation Tool](https://github.com/Cli98/anchor_computation_tool).
+### Training stages
+We experimented with training stages and found that this settings achieved the best results:
+ 
+1. `--freeze_seg True` ~ 100 epochs
+2. `--freeze_backbone True --freeze_det True` ~ 50 epochs
+3. Train end-to-end ~ 50 epochs
+
+ The reason being detection head is harder to converge early on, so we basically skipped segmentation head to focus on detection first.
  
 ## Results
-#### Traffic Object Detection
+### Traffic Object Detection
  
 <table>
 <tr><th>Result </th><th>Visualization</th></tr>
@@ -229,7 +272,7 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 
 -->
  
-#### Drivable Area Segmentation
+### Drivable Area Segmentation
  
 <table>
 <tr><th>Result </th><th>Visualization</th></tr>
@@ -263,7 +306,7 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 </p>
 -->
  
-#### Lane Line Detection
+### Lane Line Detection
  
 <table>
 <tr><th>Result </th><th>Visualization</th></tr>
