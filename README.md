@@ -60,6 +60,33 @@
 
 
 ## About The Project
+### Results
+#### Object Detection
+|        Model       |  Recall (%)  |   mAP@0.5 (%)   |
+|:------------------:|:------------:|:---------------:|
+|     `MultiNet`     |     81.3     |       60.2      |
+|      `DLT-Net`     |     89.4     |       68.4      |
+|   `Faster R-CNN`   |     77.2     |       55.6      |
+|      `YOLOv5s`     |     86.8     |       77.2      |
+|       `YOLOP`      |     89.2     |       76.5      |
+|  **`HybridNets`**  |   **92.8**   |     **77.3**    |
+ 
+#### Drivable Area Segmentation
+|       Model      | Drivable mIoU (%) |
+|:----------------:|:-----------------:|
+|    `MultiNet`    |        71.6       |
+|     `DLT-Net`    |        71.3       |
+|     `PSPNet`     |        89.6       |
+|      `YOLOP`     |        91.5       |
+| **`HybridNets`** |      **90.5**     |
+#### Lane Detection
+|      Model       | Accuracy (%) | Lane Line IoU (%) |
+|:----------------:|:------------:|:-----------------:|
+|      `Enet`      |     34.12    |       14.64       |
+|      `SCNN`      |     35.79    |       15.84       |
+|    `Enet-SAD`    |     36.56    |       16.02       |
+|      `YOLOP`     |     70.5     |        26.2       |
+| **`HybridNets`** |   **85.4**   |      **31.6**     |
 ### Project Structure
 ```bash
 HybridNets
