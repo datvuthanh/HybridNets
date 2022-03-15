@@ -53,41 +53,16 @@
       </ul>
     </li>
     <li><a href="#training-tips">Training Tips</a></li>
+    <li><a href="#results">Results</a></li>
     <li><a href="#license">License</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
+    <li><a href="#acknowledgements">Acknowledgements</a></li>
     <li><a href="#citation">Citation</a></li>
   </ol>
 </details>
 
 
 ## About The Project
-### Results
-#### Object Detection
-|        Model       |  Recall (%)  |   mAP@0.5 (%)   |
-|:------------------:|:------------:|:---------------:|
-|     `MultiNet`     |     81.3     |       60.2      |
-|      `DLT-Net`     |     89.4     |       68.4      |
-|   `Faster R-CNN`   |     77.2     |       55.6      |
-|      `YOLOv5s`     |     86.8     |       77.2      |
-|       `YOLOP`      |     89.2     |       76.5      |
-|  **`HybridNets`**  |   **92.8**   |     **77.3**    |
- 
-#### Drivable Area Segmentation
-|       Model      | Drivable mIoU (%) |
-|:----------------:|:-----------------:|
-|    `MultiNet`    |        71.6       |
-|     `DLT-Net`    |        71.3       |
-|     `PSPNet`     |        89.6       |
-|      `YOLOP`     |        91.5       |
-| **`HybridNets`** |      **90.5**     |
-#### Lane Detection
-|      Model       | Accuracy (%) | Lane Line IoU (%) |
-|:----------------:|:------------:|:-----------------:|
-|      `Enet`      |     34.12    |       14.64       |
-|      `SCNN`      |     35.79    |       15.84       |
-|    `Enet-SAD`    |     36.56    |       16.02       |
-|      `YOLOP`     |     70.5     |        26.2       |
-| **`HybridNets`** |   **85.4**   |      **31.6**     |
+#### <div align=center> **HybridNets** = **real-time** :stopwatch: * **state-of-the-art** :1st_place_medal: * (traffic object detection + drivable area segmentation + lane line detection) :motorway: </div>
 ### Project Structure
 ```bash
 HybridNets
@@ -214,12 +189,40 @@ python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 
 ## Training Tips
  gdfgfdg
-<!-- LICENSE -->
+ 
+## Results
+#### Traffic Object Detection
+|        Model       |  Recall (%)  |   mAP@0.5 (%)   |
+|:------------------:|:------------:|:---------------:|
+|     `MultiNet`     |     81.3     |       60.2      |
+|      `DLT-Net`     |     89.4     |       68.4      |
+|   `Faster R-CNN`   |     77.2     |       55.6      |
+|      `YOLOv5s`     |     86.8     |       77.2      |
+|       `YOLOP`      |     89.2     |       76.5      |
+|  **`HybridNets`**  |   **92.8**   |     **77.3**    |
+ 
+#### Drivable Area Segmentation
+|       Model      | Drivable mIoU (%) |
+|:----------------:|:-----------------:|
+|    `MultiNet`    |        71.6       |
+|     `DLT-Net`    |        71.3       |
+|     `PSPNet`     |        89.6       |
+|      `YOLOP`     |        91.5       |
+| **`HybridNets`** |      **90.5**     |
+#### Lane Line Detection
+|      Model       | Accuracy (%) | Lane Line IoU (%) |
+|:----------------:|:------------:|:-----------------:|
+|      `Enet`      |     34.12    |       14.64       |
+|      `SCNN`      |     35.79    |       15.84       |
+|    `Enet-SAD`    |     36.56    |       16.02       |
+|      `YOLOP`     |     70.5     |        26.2       |
+| **`HybridNets`** |   **85.4**   |      **31.6**     |
+ 
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
  
-## Acknowledgments
+## Acknowledgements
 
 Our work would not be complete without the wonderful work of the following authors:
 
