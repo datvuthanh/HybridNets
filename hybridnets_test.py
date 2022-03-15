@@ -1,19 +1,40 @@
 import time
-from numpy.lib.type_check import imag
 import torch
 from torch.backends import cudnn
-from matplotlib import colors
 from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
 from glob import glob
 from utils.utils import letterbox, scale_coords, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, \
-    plot_one_box, BBoxTransform, ClipBoxes
+    plot_one_box, BBoxTransform, ClipBoxes, restricted_float, boolean_string
 import os
 from torchvision import transforms
+import argparse
 
-compound_coef = 3
-img_path = glob('./demo/*.jpg') + glob('./demo/*.png')
+parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
+parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
+parser.add_argument('--source', type=str, default='demo/image', help='The demo image folder')
+parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
+parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
+parser.add_argument('--nms_thresh', type=restricted_float, default='0.25')
+parser.add_argument('--iou_thresh', type=restricted_float, default='0.3')
+parser.add_argument('--imshow', type=boolean_string, default=False, help="Show result onscreen (unusable on colab, jupyter...)")
+parser.add_argument('--imwrite', type=boolean_string, default=True, help="Write result to output folder")
+parser.add_argument('--show_det', type=boolean_string, default=False, help="Output detection result exclusively")
+parser.add_argument('--show_seg', type=boolean_string, default=False, help="Output segmentation result exclusively")
+parser.add_argument('--cuda', type=boolean_string, default=True)
+parser.add_argument('--float16', type=boolean_string, default=True, help="Use float16 for faster inference")
+args = parser.parse_args()
+
+compound_coef = args.compound_coef
+source = args.source
+if source.endswith("/"):
+    source = source[:-1]
+output = args.output
+if output.endswith("/"):
+    output = output[:-1]
+weight = args.load_weights
+img_path = glob(f'{source}/*.jpg') + glob(f'{source}/*.png')
 # img_path = [img_path[0]]  # demo with 1 image
 input_imgs = []
 shapes = []
@@ -23,16 +44,16 @@ det_only_imgs = []
 anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
 anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
 
-threshold = 0.25
-iou_threshold = 0.3
-imshow = False
-imwrite = True
-show_det = False
-show_seg = False
-os.makedirs('demo_result', exist_ok=True)
+threshold = args.nms_thresh
+iou_threshold = args.iou_thresh
+imshow = args.imshow
+imwrite = args.imwrite
+show_det = args.show_det
+show_seg = args.show_seg
+os.makedirs(output, exist_ok=True)
 
-use_cuda = True
-use_float16 = True
+use_cuda = args.cuda
+use_float16 = args.float16
 cudnn.fastest = True
 cudnn.benchmark = True
 
@@ -74,9 +95,9 @@ x = x.to(torch.float32 if not use_float16 else torch.float16)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
                            ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'))
+    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
 except:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'])
+    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu')['model'])
 model.requires_grad_(False)
 model.eval()
 
@@ -108,7 +129,7 @@ with torch.no_grad():
         seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
         seg_img = seg_img.astype(np.uint8)
         if show_seg:
-          cv2.imwrite(f'demo_result/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
+          cv2.imwrite(f'{output}/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
 
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
@@ -130,20 +151,20 @@ with torch.no_grad():
                              color=color_list[get_index_label(obj, obj_list)])
 
         if show_det:
-            cv2.imwrite(f'demo_result/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
+            cv2.imwrite(f'{output}/{i}_det.jpg',  cv2.cvtColor(det_only_imgs[i], cv2.COLOR_RGB2BGR))
 
         if imshow:
             cv2.imshow('img', ori_imgs[i])
             cv2.waitKey(0)
 
         if imwrite:
-            cv2.imwrite(f'demo_result/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
+            cv2.imwrite(f'{output}/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
 
 # exit()
 print('running speed test...')
 with torch.no_grad():
     print('test1: model inferring and postprocessing')
-    print('inferring image for 10 times...')
+    print('inferring 1 image for 10 times...')
     x = x[0, ...]
     x.unsqueeze_(0)
     t1 = time.time()

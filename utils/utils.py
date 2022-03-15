@@ -10,6 +10,7 @@ from prefetch_generator import BackgroundGenerator
 import random
 import itertools
 import yaml
+import argparse
 
 import cv2
 import numpy as np
@@ -365,6 +366,17 @@ def boolean_string(s):
     if s not in {'False', 'True'}:
         raise ValueError('Not a valid boolean string')
     return s == 'True'
+
+
+def restricted_float(x):
+    try:
+        x = float(x)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r not a floating-point literal" % (x,))
+
+    if x < 0.0 or x > 1.0:
+        raise argparse.ArgumentTypeError("%r not in range [0.0, 1.0]"%(x,))
+    return x
 
 
 # --------------------------EVAL UTILS---------------------------

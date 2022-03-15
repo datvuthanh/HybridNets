@@ -8,14 +8,34 @@ import cv2
 import numpy as np
 from glob import glob
 from utils.utils import letterbox, scale_coords, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, \
-    plot_one_box, BBoxTransform, ClipBoxes
+    plot_one_box, BBoxTransform, ClipBoxes, restricted_float, boolean_string
 import os
 from torchvision import transforms
+import argparse
 
-compound_coef = 3
-video_src = glob.glob('./demo/demo.mp4')
-os.makedirs('demo_result', exist_ok=True)
-video_out = 'demo_result/output.mp4'
+parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
+parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
+parser.add_argument('--source', type=str, default='demo/video', help='The demo video folder')
+parser.add_argument('--source_res', type=int, default=1920, help='Input video resolution (1920, 1080, ...)')
+parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
+parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
+parser.add_argument('--nms_thresh', type=restricted_float, default='0.25')
+parser.add_argument('--iou_thresh', type=restricted_float, default='0.3')
+parser.add_argument('--cuda', type=boolean_string, default=True)
+parser.add_argument('--float16', type=boolean_string, default=True, help="Use float16 for faster inference")
+args = parser.parse_args()
+
+compound_coef = args.compound_coef
+source = args.source
+if source.endswith("/"):
+    source = source[:-1]
+output = args.output
+if output.endswith("/"):
+    output = output[:-1]
+weight = args.load_weights
+video_src = glob(f'{source}/*.mp4')[0]
+os.makedirs(output, exist_ok=True)
+video_out = f'{output}/output.mp4'
 # Define the codec and create VideoWriter object
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out_stream = cv2.VideoWriter(video_out, fourcc, 30.0, (1920, 1080))
@@ -26,11 +46,11 @@ shapes = []
 anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
 anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
 
-threshold = 0.25
-iou_threshold = 0.3
+threshold = args.nms_thresh
+iou_threshold = args.iou_thresh
 
-use_cuda = True
-use_float16 = True
+use_cuda = args.cuda
+use_float16 = args.float16
 cudnn.fastest = True
 cudnn.benchmark = True
 
@@ -50,9 +70,9 @@ transform = transforms.Compose([
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
                            ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
 try:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu'))
+    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
 except:
-    model.load_state_dict(torch.load('weights/weight.pth', map_location='cuda' if use_cuda else 'cpu')['model'])
+    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu')['model'])
 model.requires_grad_(False)
 model.eval()
 

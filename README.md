@@ -3,7 +3,7 @@
 
 <div align="center">
  
-![logo](demo/hybridnets.jpg)  
+![logo](images/hybridnets.jpg)  
 **HybridNets Network Architecture.**  
 
 [![Generic badge](https://img.shields.io/badge/License-MIT-<COLOR>.svg?style=for-the-badge)](https://github.com/datvuthanh/HybridNets/blob/main/LICENSE) 
