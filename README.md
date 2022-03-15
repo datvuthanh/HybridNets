@@ -34,27 +34,33 @@
     <li>
       <a href="#about-the-project">About The Project</a>
       <ul>
-        <li><a href="#built-with">Built With</a></li>
+        <li><a href="#project-structure">Project Structure</a></li>
       </ul>
     </li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
         <li><a href="#installation">Installation</a></li>
+        <li><a href="#demo">Demo</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
+    <li>
+      <a href="#usage">Usage</a>
+      <ul>
+        <li><a href="#data-preparation">Data Preparation</a></li>
+        <li><a href="#training">Training</a></li>
+      </ul>
+    </li>
+    <li><a href="#training-tips">Training Tips</a></li>
     <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
+    <li><a href="#citation">Citation</a></li>
   </ol>
 </details>
 
 
-## Project Structure
+## About The Project
+### Project Structure
 ```bash
 HybridNets
 │   backbone.py                   # Model configuration
@@ -84,15 +90,32 @@ HybridNets
             ...
 ```
 
-## Installation
+## Getting Started
+### Installation
 The project was developed with [**Python>=3.7**](https://www.python.org/downloads/) and [**Pytorch>=1.10**](https://pytorch.org/get-started/locally/).
 ```bash
 git clone https://github.com/datvuthanh/HybridNets
 cd HybridNets
 pip install -r requirements.txt
 ```
+ 
+### Demo
+```bash
+# Download end-to-end weights
+mkdir weights
+curl -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.1/hybridnets.pth
 
-## Data preparation
+# Image inference
+python hybridnets_test.py -w weights/hybridnets.pth --source demo/image --output demo_result --imshow False --imwrite True
+
+# Video inference
+python hybridnets_test_videos.py -w weights/hybridnets.pth --source demo/video --output demo_result
+
+# Result is saved in a new folder called demo_result
+```
+
+## Usage
+### Data Preparation
 Recommended dataset structure:
 ```bash
 HybridNets
@@ -114,23 +137,8 @@ Update your dataset paths in `projects/your_project_name.yml`.
 
 For BDD100K: [imgs](https://bdd-data.berkeley.edu/), [det_annot](https://drive.google.com/file/d/19CEnZzgLXNNYh1wCvUlNi8UfiBkxVRH0/view), [da_seg_annot](https://drive.google.com/file/d/1NZM-xqJJYZ3bADgLCdrFOa5Vlen3JlkZ/view), [ll_seg_annot](https://drive.google.com/file/d/1o-XpIvHJq0TVUrwlwiMGzwP1CtFsfQ6t/view)
 
-## Demo
-```bash
-# Download end-to-end weights
-mkdir weights
-curl -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.1/hybridnets.pth
-
-# Image inference
-python hybridnets_test.py
-
-# Video inference
-python hybridnets_test_videos.py
-
-# Result is saved in a new folder called demo_result
-```
-
-## Training
-### 1) Edit or create a new project configuration, using bdd100k.yml as a template
+### Training
+#### 1) Edit or create a new project configuration, using bdd100k.yml as a template
 ```python
 # mean and std of dataset in RGB order
 mean: [0.485, 0.456, 0.406]
@@ -157,7 +165,7 @@ dataset:
 ...
 ```
 
-### 2) Train
+#### 2) Train
 ```bash
 python train.py -p bdd100k        # your_project_name
                 -c 3              # coefficient of effnet backbone, result from paper is 3
@@ -169,9 +177,9 @@ python train.py -p bdd100k        # your_project_name
                 --optim adamw     # adamw | sgd
                 --num_epochs 200
 ```
-Please check `python train.py --help` for all available arguments.
+Please check `python train.py --help` for every available arguments.
 
-### 3) Evaluate
+#### 3) Evaluate
 ```bash
 python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
 ```
