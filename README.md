@@ -61,7 +61,8 @@
 
 
 ## About The Project
-#### <div align=center> **HybridNets** = **real-time** :stopwatch: * **state-of-the-art** :1st_place_medal: * (traffic object detection + drivable area segmentation + lane line detection) :motorway: </div>
+<!-- #### <div align=center> **HybridNets** = **real-time** :stopwatch: * **state-of-the-art** :1st_place_medal: * (traffic object detection + drivable area segmentation + lane line detection) :motorway: </div> -->
+#### HybridNets: End-to-End Perception Network. HybridNets can run real-time on embedded systems, and obtains SOTA Object Detection, Lane Detection on BDD100K Dataset. 
 ### Project Structure
 ```bash
 HybridNets
