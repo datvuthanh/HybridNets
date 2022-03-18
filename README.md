@@ -156,7 +156,7 @@ anchors_ratios: '[(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]'
 
 # must match your dataset's category_id.
 # category_id is one_indexed,
-# for example, index of 'car' here is 2, while category_id of is 3
+# for example, index of 'car' here is 0, while category_id is 1
 obj_list: ['car']
 
 seg_list: ['road',
