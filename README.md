@@ -23,7 +23,7 @@
 >
 >  (<sup>:email:</sup>) corresponding author.
 >
-> *arXiv technical report ([arXiv 2108.11250](https://arxiv.org/abs/2108.11250))*
+> *arXiv technical report ([arXiv 2203.09035](https://arxiv.org/abs/2203.09035))*
     
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/yolop-you-only-look-once-for-panoptic-driving/traffic-object-detection-on-bdd100k)](https://paperswithcode.com/sota/traffic-object-detection-on-bdd100k?p=yolop-you-only-look-once-for-panoptic-driving)
  
@@ -369,11 +369,13 @@ Our work would not be complete without the wonderful work of the following autho
 If you find our paper and code useful for your research, please consider giving a star :star:   and citation :pencil: :
 
 ```BibTeX
-@misc{2108.11250,
-Author = {Dong Wu and Manwen Liao and Weitian Zhang and Xinggang Wang},
-Title = {YOLOP: You Only Look Once for Panoptic Driving Perception},
-Year = {2021},
-Eprint = {arXiv:2108.11250},
+@misc{vu2022hybridnets,
+      title={HybridNets: End-to-End Perception Network}, 
+      author={Dat Vu and Bao Ngo and Hung Phan},
+      year={2022},
+      eprint={2203.09035},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
 }
 ```
  
