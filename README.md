@@ -17,7 +17,7 @@
  
 </div>
 
-> [**HybridNets: End-to-End Perception Network**](https://arxiv.org/abs/2108.11250)
+> [**HybridNets: End-to-End Perception Network**](https://arxiv.org/abs/2203.09035)
 >
 > by Dat Vu, Bao Ngo, [Hung Phan](https://scholar.google.com/citations?user=V3paQH8AAAAJ&hl=vi&oi=ao)<sup> :email:</sup>     [*FPT University*](https://uni.fpt.edu.vn/en-US/Default.aspx)
 >
