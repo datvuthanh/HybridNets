@@ -96,7 +96,7 @@ HybridNets
             ...
 ```
 
-## Getting Started
+## Getting Started [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Uc1ZPoPeh-lAhPQ1CloiVUsOIRAVOGWA?usp=sharing)
 ### Installation
 The project was developed with [**Python>=3.7**](https://www.python.org/downloads/) and [**Pytorch>=1.10**](https://pytorch.org/get-started/locally/).
 ```bash
@@ -109,7 +109,7 @@ pip install -r requirements.txt
 ```bash
 # Download end-to-end weights
 mkdir weights
-curl -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.1/hybridnets.pth
+curl -L -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.0/hybridnets.pth
 
 # Image inference
 python hybridnets_test.py -w weights/hybridnets.pth --source demo/image --output demo_result --imshow False --imwrite True
