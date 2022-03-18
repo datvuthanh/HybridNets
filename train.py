@@ -61,6 +61,8 @@ def get_args():
                         help='Whether to print results per class when valing')
     parser.add_argument('--plots', type=boolean_string, default=True,
                         help='Whether to plot confusion matrix when valing')
+    parser.add_argument('--num_gpus', type=int, default=1,
+                        help='Number of GPUs to be used (0 to use CPU)')
 
     args = parser.parse_args()
     return args
@@ -117,7 +119,7 @@ class ModelWithLoss(nn.Module):
 def train(opt):
     params = Params(f'projects/{opt.project}.yml')
 
-    if params.num_gpus == 0:
+    if opt.num_gpus == 0:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
     if torch.cuda.is_available():
@@ -242,7 +244,7 @@ def train(opt):
     # apply sync_bn can solve it,
     # by packing all mini-batch across all gpus as one batch and normalize, then send it back to all gpus.
     # but it would also slow down the training by a little bit.
-    if params.num_gpus > 1 and opt.batch_size // params.num_gpus < 4:
+    if opt.num_gpus > 1 and opt.batch_size // opt.num_gpus < 4:
         model.apply(replace_w_sync_bn)
         use_sync_bn = True
     else:
@@ -253,10 +255,10 @@ def train(opt):
     # wrap the model with loss function, to reduce the memory usage on gpu0 and speedup
     model = ModelWithLoss(model, debug=opt.debug)
 
-    if params.num_gpus > 0:
+    if opt.num_gpus > 0:
         model = model.cuda()
-        if params.num_gpus > 1:
-            model = CustomDataParallel(model, params.num_gpus)
+        if opt.num_gpus > 1:
+            model = CustomDataParallel(model, opt.num_gpus)
             if use_sync_bn:
                 patch_replication_callback(model)
 
@@ -296,7 +298,7 @@ def train(opt):
                     annot = data['annot']
                     seg_annot = data['segmentation']
 
-                    if params.num_gpus == 1:
+                    if opt.num_gpus == 1:
                         # if only one gpu, just send it to cuda:0
                         # elif multiple gpus, send it to multiple gpus in CustomDataParallel, not here
                         imgs = imgs.cuda()

@@ -58,4 +58,3 @@ model:
 need_autoanchor: false
 pin_memory: false
 num_seg_class: 2
-num_gpus: 1

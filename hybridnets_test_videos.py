@@ -80,7 +80,7 @@ cap = cv2.VideoCapture(video_src)
 # Define the codec and create VideoWriter object
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out_stream = cv2.VideoWriter(video_out, fourcc, 30.0,
-                             (cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+                             (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
 t1 = time.time()
 frame_count = 0
 while True:

@@ -42,7 +42,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         filenames = data['filenames']
         shapes = data['shapes']
 
-        if params.num_gpus == 1:
+        if opt.num_gpus == 1:
             imgs = imgs.cuda()
             annot = annot.cuda()
             seg_annot = seg_annot.cuda()
@@ -261,7 +261,7 @@ def val_from_cmd(model, val_generator, params, opt):
         filenames = data['filenames']
         shapes = data['shapes']
 
-        if params.num_gpus == 1:
+        if opt.num_gpus == 1:
             imgs = imgs.cuda()
             annot = annot.cuda()
             seg_annot = seg_annot.cuda()
@@ -459,7 +459,9 @@ if __name__ == "__main__":
     ap.add_argument('-v', '--verbose', type=boolean_string, default=True,
                     help='Whether to print results per class when valing')
     ap.add_argument('--plots', type=boolean_string, default=True,
-                        help='Whether to plot confusion matrix when valing')
+                    help='Whether to plot confusion matrix when valing')
+    ap.add_argument('--num_gpus', type=int, default=1,
+                    help='Number of GPUs to be used (0 to use CPU)')
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
@@ -501,7 +503,7 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(weights_path)['model'])
     model.requires_grad_(False)
 
-    if params['num_gpus'] > 0:
+    if args.num_gpus > 0:
         model.cuda()
 
     val_from_cmd(model, val_generator, params, args)
