@@ -21,7 +21,7 @@ def hybridnets(pretrained=True, compound_coef=3, device=None):
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list))
     if pretrained and compound_coef == 3:
-        weight_url = 'https://github.com/datvuthanh/HybridNets/releases/download/v1.1/hybridnets.pth'
+        weight_url = 'https://github.com/datvuthanh/HybridNets/releases/download/v1.0/hybridnets.pth'
         model.load_state_dict(torch.hub.load_state_dict_from_url(weight_url, map_location=device))
     model = model.to(device)
     return model
