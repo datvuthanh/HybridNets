@@ -6,11 +6,10 @@ import os
 
 from utils import smp_metrics
 from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batch, ap_per_class, fitness, \
-    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string
+    save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string, Params
 from backbone import HybridNetsBackbone
 from hybridnets.dataset import BddDataset
 from torchvision import transforms
-from utils.utils import Params
 
 
 @torch.no_grad()

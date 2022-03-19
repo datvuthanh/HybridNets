@@ -5,8 +5,8 @@ from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
 from glob import glob
-from utils.utils import letterbox, scale_coords, postprocess, STANDARD_COLORS, standard_to_bgr, get_index_label, \
-    plot_one_box, BBoxTransform, ClipBoxes, restricted_float, boolean_string
+from utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, boolean_string
+from utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
 import os
 from torchvision import transforms
 import argparse

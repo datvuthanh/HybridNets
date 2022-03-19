@@ -15,11 +15,10 @@ from backbone import HybridNetsBackbone
 from hybridnets.loss import FocalLoss
 from utils.sync_batchnorm import patch_replication_callback
 from utils.utils import replace_w_sync_bn, CustomDataParallel, get_last_weights, init_weights, boolean_string, \
-    save_checkpoint, DataLoaderX
+    save_checkpoint, DataLoaderX, Params
 from hybridnets.dataset import BddDataset
 from hybridnets.loss import FocalLossSeg, TverskyLoss
 from hybridnets.autoanchor import run_anchor
-from utils.utils import Params
 
 
 def get_args():

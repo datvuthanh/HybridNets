@@ -89,6 +89,7 @@ HybridNets
 │       bdd100k.yml               # Project configuration
 │
 └───utils
+    │   plot.py                   # Draw bounding box
     │   smp_metrics.py            # https://github.com/qubvel/segmentation_models.pytorch/blob/master/segmentation_models_pytorch/metrics/functional.py
     │   utils.py                  # Various helper functions (preprocess, postprocess, eval...)
     │
