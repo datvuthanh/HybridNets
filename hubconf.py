@@ -14,7 +14,7 @@ def hybridnets(pretrained=True, compound_coef=3, device=None):
     Returns:
         HybridNets model
     """
-    params = Params(f'projects/bdd100k.yml')
+    params = Params(os.path.join(Path(__file__).resolve().parent, "projects/bdd100k.yml"))
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list))
