@@ -1,6 +1,5 @@
-dependencies = ["efficientnet_pytorch",
-                "pretrainedmodels", "PyYAML",
-               "timm", "torch", "torchvision"]
+dependencies = ["efficientnet_pytorch", "pretrainedmodels",
+                "timm", "torch", "torchvision"]
 import torch
 from utils.utils import Params
 from backbone import HybridNetsBackbone
