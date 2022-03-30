@@ -6,27 +6,24 @@ std: [0.229, 0.224, 0.225]
 #anchors_scales: '[2 ** 0, 2 ** 1/3, 2 ** 2/3]'
 #anchors_ratios: '[(0.7, 1.4), (1.0, 1.0), (1.4, 0.7)]'
 
+# another sample anchor
 #anchors_scales: '[5.125, 0.625, 1.625]'
 #anchors_ratios: '[(1, 0.7317073170731707), (1, 0.85), (1, 0.7884615384615384)]'
 
 anchors_scales: '[2**0, 2**0.70, 2**1.32]'
 anchors_ratios: '[(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]'
 
-# must match your dataset's category_id.
-# category_id is one_indexed,
-# for example, index of 'car' here is 2, while category_id of is 3
-#obj_list: ['pedestrian',
-#          'rider',
-#          'car',
-#          'truck',
-#          'bus',
-#          'train',
-#          'motorcycle',
-#          'bicycle',
-#          'traffic light',
-#          'traffic sign']
-
+# BDD100K officially supports 10 classes
+# obj_list: ['person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle', 'traffic light', 'traffic sign']
 obj_list: ['car']
+obj_combine: ['car', 'bus', 'truck', 'train']  # if single class, combine these classes into 1 single class in obj_list
+                                               # leave as empty list ([]) to not combine classes
+
+
+# if detect traffic light by color, please edit 'traffic light' to 'tl_green', 'tl_red', 'tl_yellow', 'tl_none'
+# TODO: automatic this step
+traffic_light_color: false
+
 
 seg_list: ['road',
           'lane']

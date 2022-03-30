@@ -25,7 +25,6 @@ class BddDataset(Dataset):
         Returns:
         None
         """
-        self.single_cls = True  # just detect vehicle
         self.is_train = is_train
         self.params = params
         self.transform = transform
@@ -61,25 +60,6 @@ class BddDataset(Dataset):
             bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']),
             additional_targets={'mask0': 'mask'})
 
-        # bdd_labels = {
-        # 'unlabeled':0, 'dynamic': 1, 'ego vehicle': 2, 'ground': 3,
-        # 'static': 4, 'parking': 5, 'rail track': 6, 'road': 7,
-        # 'sidewalk': 8, 'bridge': 9, 'building': 10, 'fence': 11,
-        # 'garage': 12, 'guard rail': 13, 'tunnel': 14, 'wall': 15,
-        # 'banner': 16, 'billboard': 17, 'lane divider': 18,'parking sign': 19,
-        # 'pole': 20, 'polegroup': 21, 'street light': 22, 'traffic cone': 23,
-        # 'traffic device': 24, 'traffic light': 25, 'traffic sign': 26, 'traffic sign frame': 27,
-        # 'terrain': 28, 'vegetation': 29, 'sky': 30, 'person': 31,
-        # 'rider': 32, 'bicycle': 33, 'bus': 34, 'car': 35,
-        # 'caravan': 36, 'motorcycle': 37, 'trailer': 38, 'train': 39,
-        # 'truck': 40
-        # }
-        self.id_dict = {'person': 0, 'rider': 1, 'car': 2, 'bus': 3, 'truck': 4,
-                'bike': 5, 'motor': 6, 'tl_green': 7, 'tl_red': 8,
-                'tl_yellow': 9, 'tl_none': 10, 'traffic sign': 11, 'train': 12}
-        self.id_dict_single = {'car': 0, 'bus': 1, 'truck': 2, 'train': 3}
-        # id_dict = {'car': 0, 'bus': 1, 'truck': 2}
-
         self.shapes = np.array(params.dataset['org_img_size'])
         self.db = self._get_db()
 
@@ -111,20 +91,17 @@ class BddDataset(Dataset):
             gt = np.zeros((len(data), 5))
             for idx, obj in enumerate(data):
                 category = obj['category']
-                if category == "traffic light":
-                    color = obj['attributes']['trafficLightColor']
-                    category = "tl_" + color
-                if category in self.id_dict.keys():
-                    x1 = float(obj['box2d']['x1'])
-                    y1 = float(obj['box2d']['y1'])
-                    x2 = float(obj['box2d']['x2'])
-                    y2 = float(obj['box2d']['y2'])
-                    cls_id = self.id_dict[category]
-                    if self.single_cls:
-                        cls_id = 0
-                    gt[idx][0] = cls_id
-                    box = self.convert((width, height), (x1, x2, y1, y2))
-                    gt[idx][1:] = list(box)
+                x1 = float(obj['box2d']['x1'])
+                y1 = float(obj['box2d']['y1'])
+                x2 = float(obj['box2d']['x2'])
+                y2 = float(obj['box2d']['y2'])
+                if len(self.params.obj_combine):  # multiple classes into 1 class
+                    cls_id = 0
+                else:
+                    cls_id = self.params.obj_list.index(category)
+                gt[idx][0] = cls_id
+                box = self.convert((width, height), (x1, x2, y1, y2))
+                gt[idx][1:] = list(box)
 
             rec = [{
                 'image': image_path,
@@ -369,10 +346,12 @@ class BddDataset(Dataset):
         remain = []
         for obj in db:
             if 'box2d' in obj.keys():  # obj.has_key('box2d'):
-                if self.single_cls:
-                    if obj['category'] in self.id_dict_single.keys():
-                        remain.append(obj)
-                else:
+                if self.params.traffic_light_color and obj['category'] == "traffic light":
+                    color = obj['attributes']['trafficLightColor']
+                    obj['category'] = "tl_" + color
+                if obj['category'] in self.params.obj_list:  # multi-class
+                    remain.append(obj)
+                elif len(self.params.obj_list) == 1 and obj['category'] in self.params.obj_combine:
                     remain.append(obj)
         return remain
 
