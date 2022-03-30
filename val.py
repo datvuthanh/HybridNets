@@ -194,6 +194,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
         # Print results per class
         training = True
         if (opt.verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+            pf = '%15s' + '%11i' * 2 + '%11.3g' * 4
             for i, c in enumerate(ap_class):
                 print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
@@ -439,6 +440,7 @@ def val_from_cmd(model, val_generator, params, opt):
     # Print results per class
     training = False
     if (opt.verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+        pf = '%15s' + '%11i' * 2 + '%11.3g' * 4
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
