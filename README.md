@@ -155,10 +155,11 @@ std: [0.229, 0.224, 0.225]
 anchors_scales: '[2**0, 2**0.70, 2**1.32]'
 anchors_ratios: '[(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]'
 
-# must match your dataset's category_id.
-# category_id is one_indexed,
-# for example, index of 'car' here is 0, while category_id is 1
+# BDD100K officially supports 10 classes
+# obj_list: ['person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle', 'traffic light', 'traffic sign']
 obj_list: ['car']
+obj_combine: ['car', 'bus', 'truck', 'train']  # if single class, combine these classes into 1 single class in obj_list
+                                               # leave as empty list ([]) to not combine classes
 
 seg_list: ['road',
           'lane']
