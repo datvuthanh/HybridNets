@@ -126,8 +126,8 @@ def train(opt):
     else:
         torch.manual_seed(42)
 
-    opt.saved_path = opt.saved_path + f'/{params.project_name}/'
-    opt.log_path = opt.log_path + f'/{params.project_name}/tensorboard/'
+    opt.saved_path = opt.saved_path + f'/{opt.project}/'
+    opt.log_path = opt.log_path + f'/{opt.project}/tensorboard/'
     os.makedirs(opt.log_path, exist_ok=True)
     os.makedirs(opt.saved_path, exist_ok=True)
 
@@ -138,7 +138,7 @@ def train(opt):
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                mean=params.mean, std=params.std
             )
         ])
     )
@@ -159,7 +159,7 @@ def train(opt):
         transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                mean=params.mean, std=params.std
             )
         ])
     )
@@ -177,8 +177,8 @@ def train(opt):
         params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
 
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
-                                 ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                                 seg_classes=len(params.seg_list))
+                               ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
+                               seg_classes=len(params.seg_list))
 
     # load last weights
     ckpt = {}

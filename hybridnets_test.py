@@ -5,13 +5,15 @@ from backbone import HybridNetsBackbone
 import cv2
 import numpy as np
 from glob import glob
-from utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, boolean_string
+from utils.utils import letterbox, scale_coords, postprocess, BBoxTransform, ClipBoxes, restricted_float, \
+    boolean_string, Params
 from utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_one_box
 import os
 from torchvision import transforms
 import argparse
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
+parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
 parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
 parser.add_argument('--source', type=str, default='demo/image', help='The demo image folder')
 parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
@@ -26,6 +28,7 @@ parser.add_argument('--cuda', type=boolean_string, default=True)
 parser.add_argument('--float16', type=boolean_string, default=True, help="Use float16 for faster inference")
 args = parser.parse_args()
 
+params = Params(f'projects/{args.project}.yml')
 compound_coef = args.compound_coef
 source = args.source
 if source.endswith("/"):
@@ -40,9 +43,8 @@ input_imgs = []
 shapes = []
 det_only_imgs = []
 
-# replace this part with your project's anchor config
-anchor_ratios = [(0.62, 1.58), (1.0, 1.0), (1.58, 0.62)]
-anchor_scales = [2 ** 0, 2 ** 0.70, 2 ** 1.32]
+anchor_ratios = params.anchors_scales
+anchor_scales = params.anchors_ratios
 
 threshold = args.nms_thresh
 iou_threshold = args.iou_thresh
@@ -57,16 +59,19 @@ use_float16 = args.float16
 cudnn.fastest = True
 cudnn.benchmark = True
 
-obj_list = ['car']
+obj_list = params.obj_list
+seg_list = params.seg_list
 
 color_list = standard_to_bgr(STANDARD_COLORS)
 ori_imgs = [cv2.imread(i, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION) for i in img_path]
 ori_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in ori_imgs]
 # cv2.imwrite('ori.jpg', ori_imgs[0])
 # cv2.imwrite('normalized.jpg', normalized_imgs[0]*255)
-resized_shape = 640
+resized_shape = params.model['image_size']
+if isinstance(resized_shape, list):
+    resized_shape = max(resized_shape)
 normalize = transforms.Normalize(
-    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    mean=params.mean, std=params.std
 )
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -93,7 +98,7 @@ else:
 x = x.to(torch.float32 if not use_float16 else torch.float16)
 # print(x.shape)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
-                           ratios=anchor_ratios, scales=anchor_scales, seg_classes=2)
+                           ratios=anchor_ratios, scales=anchor_scales, seg_classes=len(seg_list))
 try:
     model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
 except:
