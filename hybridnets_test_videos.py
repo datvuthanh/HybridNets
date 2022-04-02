@@ -38,8 +38,8 @@ os.makedirs(output, exist_ok=True)
 input_imgs = []
 shapes = []
 
-anchor_ratios = params.anchors_scales
-anchor_scales = params.anchors_ratios
+anchors_ratios = params.anchors_ratios
+anchors_scales = params.anchors_scales
 
 threshold = args.nms_thresh
 iou_threshold = args.iou_thresh
@@ -66,7 +66,7 @@ transform = transforms.Compose([
 # print(x.shape)
 
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list),
-                           ratios=anchor_ratios, scales=anchor_scales, seg_classes=len(seg_list))
+                           ratios=eval(anchors_ratios), scales=eval(anchors_scales), seg_classes=len(seg_list))
 try:
     model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
 except:
