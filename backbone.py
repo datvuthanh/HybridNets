@@ -74,8 +74,6 @@ class HybridNetsBackbone(nn.Module):
                                **kwargs)
 
         if backbone_name:
-            # Use timm to create another backbone that you prefer
-            # https://github.com/rwightman/pytorch-image-models
             self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
         else:
             # EfficientNet_Pytorch

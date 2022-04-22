@@ -24,8 +24,10 @@ from hybridnets.autoanchor import run_anchor
 def get_args():
     parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
     parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
+    parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create another backbone replacing efficientnet. '
+                                                            'https://github.com/rwightman/pytorch-image-models')
     parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
-    parser.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
+    parser.add_argument('-n', '--num_workers', type=int, default=8, help='Num_workers of dataloader')
     parser.add_argument('-b', '--batch_size', type=int, default=12, help='Number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,
                         help='Freeze encoder and neck (effnet and bifpn)')
@@ -35,7 +37,7 @@ def get_args():
                         help='Freeze segmentation head')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--optim', type=str, default='adamw', help='Select optimizer for training, '
-                                                                   'suggest using \'admaw\' until the'
+                                                                   'suggest using \'adamw\' until the'
                                                                    ' very final stage then switch to \'sgd\'')
     parser.add_argument('--num_epochs', type=int, default=500)
     parser.add_argument('--val_interval', type=int, default=1, help='Number of epoches between valing phases')
@@ -178,7 +180,7 @@ def train(opt):
 
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list))
+                               seg_classes=len(params.seg_list), backbone_name=opt.backbone)
 
     # load last weights
     ckpt = {}

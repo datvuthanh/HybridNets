@@ -453,6 +453,9 @@ def val_from_cmd(model, val_generator, params, opt):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
+    ap.add_argument('-bb', '--backbone', type=str,
+                   help='Use timm to create another backbone replacing efficientnet. '
+                   'https://github.com/rwightman/pytorch-image-models')
     ap.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
     ap.add_argument('-w', '--weights', type=str, default=None, help='/path/to/weights')
     ap.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
@@ -495,7 +498,7 @@ if __name__ == "__main__":
 
     model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list))
+                               seg_classes=len(params.seg_list), backbone_name=args.backbone)
     
 #     print(model)
     try:
