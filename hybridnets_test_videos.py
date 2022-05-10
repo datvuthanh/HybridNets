@@ -78,8 +78,8 @@ model.eval()
 
 if use_cuda:
     model = model.cuda()
-if use_float16:
-    model = model.half()
+    if use_float16:
+        model = model.half()
 
 for video_index, video_src in enumerate(video_srcs):
     video_out = f'{output}/{video_index}.mp4'

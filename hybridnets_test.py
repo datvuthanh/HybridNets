@@ -110,8 +110,8 @@ model.eval()
 
 if use_cuda:
     model = model.cuda()
-if use_float16:
-    model = model.half()
+    if use_float16:
+        model = model.half()
 
 with torch.no_grad():
     features, regression, classification, anchors, seg = model(x)
