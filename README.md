@@ -109,8 +109,7 @@ pip install -r requirements.txt
 ### Demo
 ```bash
 # Download end-to-end weights
-mkdir weights
-curl -L -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.0/hybridnets.pth
+curl --create-dirs -L -o weights/hybridnets.pth https://github.com/datvuthanh/HybridNets/releases/download/v1.0/hybridnets.pth
 
 # Image inference
 python hybridnets_test.py -w weights/hybridnets.pth --source demo/image --output demo_result --imshow False --imwrite True
@@ -177,6 +176,7 @@ dataset:
 ```bash
 python train.py -p bdd100k        # your_project_name
                 -c 3              # coefficient of effnet backbone, result from paper is 3
+            OR  -bb repvgg_b0     # change your backbone with timm
                 -n 4              # num_workers
                 -b 8              # batch_size per gpu
                 -w path/to/weight # use 'last' to resume training from previous session
@@ -185,7 +185,7 @@ python train.py -p bdd100k        # your_project_name
                 --optim adamw     # adamw | sgd
                 --num_epochs 200
 ```
-Please check `python train.py --help` for every available arguments.
+Please check `python train.py --help` for cheat codes.
 
 #### 3) Evaluate
 ```bash
