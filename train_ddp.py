@@ -10,14 +10,18 @@ from torch import nn
 from torchvision import transforms
 from tqdm.autonotebook import tqdm
 
-from val import val
+from val_ddp import val
 from backbone import HybridNetsBackbone
 from hybridnets.loss import FocalLoss
-from utils.utils import get_last_weights, init_weights, boolean_string, \
-    save_checkpoint, DataLoaderX, Params
+from utils.utils import get_last_weights, init_weights, boolean_string, save_checkpoint, Params
 from hybridnets.dataset import BddDataset
 from hybridnets.loss import FocalLossSeg, TverskyLoss
-from hybridnets.autoanchor import run_anchor
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.optim import ZeroRedundancyOptimizer
+import torch.multiprocessing as mp
+import torch.distributed as dist
+from torch.utils.data import DataLoader
 
 
 def get_args():
@@ -116,66 +120,16 @@ class ModelWithLoss(nn.Module):
         return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
 
-def train(opt):
+def train(rank, opt):
+    print(2)
     params = Params(f'projects/{opt.project}.yml')
 
-    if opt.num_gpus == 0:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+    torch.cuda.manual_seed(69)
+    torch.manual_seed(69)
 
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(42)
-    else:
-        torch.manual_seed(42)
+    setup(rank, opt.num_gpus)
 
-    opt.saved_path = opt.saved_path + f'/{opt.project}/'
-    opt.log_path = opt.log_path + f'/{opt.project}/tensorboard/'
-    os.makedirs(opt.log_path, exist_ok=True)
-    os.makedirs(opt.saved_path, exist_ok=True)
-
-    train_dataset = BddDataset(
-        params=params,
-        is_train=True,
-        inputsize=params.model['image_size'],
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=params.mean, std=params.std
-            )
-        ])
-    )
-
-    training_generator = DataLoaderX(
-        train_dataset,
-        batch_size=opt.batch_size,
-        shuffle=True,
-        num_workers=opt.num_workers,
-        pin_memory=params.pin_memory,
-        collate_fn=BddDataset.collate_fn
-    )
-
-    valid_dataset = BddDataset(
-        params=params,
-        is_train=False,
-        inputsize=params.model['image_size'],
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=params.mean, std=params.std
-            )
-        ])
-    )
-
-    val_generator = DataLoaderX(
-        valid_dataset,
-        batch_size=opt.batch_size,
-        shuffle=False,
-        num_workers=opt.num_workers,
-        pin_memory=params.pin_memory,
-        collate_fn=BddDataset.collate_fn
-    )
-
-    if params.need_autoanchor:
-        params.anchors_scales, params.anchors_ratios = run_anchor(None, train_dataset)
+    train_dataloader, val_dataloader = prepare(rank, params, opt)
 
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
@@ -241,17 +195,27 @@ def train(opt):
 
     # wrap the model with loss function, to reduce the memory usage on gpu0 and speedup
     model = ModelWithLoss(model, debug=opt.debug)
-
-    if opt.num_gpus > 0:
-        model = model.cuda()
+    model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model = model.to(rank)
+    model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
 
     if opt.optim == 'adamw':
-        optimizer = torch.optim.AdamW(model.parameters(), opt.lr)
+        optimizer = ZeroRedundancyOptimizer(
+            model.parameters(),
+            optimizer_class=torch.optim.AdamW,
+            lr=opt.lr
+        )
     else:
-        optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
+        optimizer = ZeroRedundancyOptimizer(
+            model.parameters(),
+            optimizer_class=torch.optim.SGD,
+            lr=opt.lr,
+            momentum=0.9,
+            nesterov=True
+        )
     # print(ckpt)
-    if opt.load_weights is not None and ckpt.get('optimizer', None):
-        optimizer.load_state_dict(ckpt['optimizer'])
+    # if opt.load_weights is not None and ckpt.get('optimizer', None):
+    #     optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -263,7 +227,8 @@ def train(opt):
     step = max(0, last_step)
     model.train()
 
-    num_iter_per_epoch = len(training_generator)
+    num_iter_per_epoch = len(train_dataloader)
+    torch.cuda.set_device(rank)
     try:
         for epoch in range(opt.num_epochs):
             last_epoch = step // num_iter_per_epoch
@@ -271,21 +236,17 @@ def train(opt):
                 continue
 
             epoch_loss = []
-            progress_bar = tqdm(training_generator)
+            train_dataloader.sampler.set_epoch(epoch)
+            progress_bar = tqdm(train_dataloader)
             for iter, data in enumerate(progress_bar):
-                if iter < step - last_epoch * num_iter_per_epoch:
+                if iter < step - last_epoch * num_iter_per_epoch and rank == 0:
                     progress_bar.update()
                     continue
                 try:
-                    imgs = data['img']
-                    annot = data['annot']
-                    seg_annot = data['segmentation']
-
-                    if opt.num_gpus == 1:
-                        # if only one gpu, just send it to cuda:0
-                        imgs = imgs.cuda()
-                        annot = annot.cuda()
-                        seg_annot = seg_annot.cuda().long()
+                    # print("WTF")
+                    imgs = data['img'].to(rank)
+                    annot = data['annot'].to(rank)
+                    seg_annot = data['segmentation'].to(rank)
 
                     optimizer.zero_grad()
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
@@ -304,23 +265,36 @@ def train(opt):
                     optimizer.step()
 
                     epoch_loss.append(float(loss))
+                    
+                    # print(3)
+                    dist.reduce(loss, 0, op=dist.ReduceOp.AVG)
+                    # print(4)
+                    dist.reduce(cls_loss, 0, op=dist.ReduceOp.AVG)
+                    # print(5)
 
-                    progress_bar.set_description(
-                        'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
-                            step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
-                            reg_loss.item(), seg_loss.item(), loss.item()))
-                    writer.add_scalars('Loss', {'train': loss}, step)
-                    writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
-                    writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
-                    writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
+                    dist.reduce(reg_loss, 0, op=dist.ReduceOp.AVG)
+                    dist.reduce(seg_loss, 0, op=dist.ReduceOp.AVG)
+                    # print(6)
 
-                    # log learning_rate
-                    current_lr = optimizer.param_groups[0]['lr']
-                    writer.add_scalar('learning_rate', current_lr, step)
+
+
+                    if rank == 0:
+                        progress_bar.set_description(
+                            'Step: {}. Epoch: {}/{}. Iteration: {}/{}. Cls loss: {:.5f}. Reg loss: {:.5f}. Seg loss: {:.5f}. Total loss: {:.5f}'.format(
+                                step, epoch, opt.num_epochs, iter + 1, num_iter_per_epoch, cls_loss.item(),
+                                reg_loss.item(), seg_loss.item(), loss.item()))
+                        writer.add_scalars('Loss', {'train': loss}, step)
+                        writer.add_scalars('Regression_loss', {'train': reg_loss}, step)
+                        writer.add_scalars('Classfication_loss', {'train': cls_loss}, step)
+                        writer.add_scalars('Segmentation_loss', {'train': seg_loss}, step)
+
+                        # log learning_rate
+                        current_lr = optimizer.param_groups[0]['lr']
+                        writer.add_scalar('learning_rate', current_lr, step)
 
                     step += 1
 
-                    if step % opt.save_interval == 0 and step > 0:
+                    if step % opt.save_interval == 0 and step > 0 and rank == 0:
                         save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
                         print('checkpoint...')
 
@@ -329,17 +303,68 @@ def train(opt):
                     print(e)
                     continue
 
-            scheduler.step(np.mean(epoch_loss))
+            epoch_loss_tensor = torch.tensor(np.mean(epoch_loss), device=rank)
+            dist.all_reduce(epoch_loss_tensor, op=dist.ReduceOp.AVG)
+            scheduler.step(epoch_loss_tensor.item())
 
             if epoch % opt.val_interval == 0:
-                best_fitness, best_loss, best_epoch = val(model, optimizer, val_generator, params, opt, writer, epoch,
+                best_fitness, best_loss, best_epoch = val(model, rank, optimizer, val_dataloader, params, opt, writer, epoch,
                                                           step, best_fitness, best_loss, best_epoch)
     except KeyboardInterrupt:
-        save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
+        if rank == 0:
+            save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')
     finally:
         writer.close()
+        dist.destroy_process_group()
 
+
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '23456'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+def prepare(rank, params, opt):
+    train_dataset = BddDataset(
+        params=params,
+        is_train=True,
+        inputsize=params.model['image_size'],
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=params.mean, std=params.std
+            )
+        ])
+    )
+    train_sampler = DistributedSampler(train_dataset, num_replicas=opt.num_gpus, rank=rank, shuffle=False, drop_last=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=opt.batch_size, pin_memory=params.pin_memory, num_workers=opt.num_workers,
+                                    drop_last=True, shuffle=False, sampler=train_sampler, collate_fn=BddDataset.collate_fn)
+    
+    val_dataset = BddDataset(
+        params=params,
+        is_train=False,
+        inputsize=params.model['image_size'],
+        transform=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=params.mean, std=params.std
+            )
+        ])
+    )
+    val_sampler = DistributedSampler(val_dataset, num_replicas=opt.num_gpus, rank=rank, shuffle=False, drop_last=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=opt.batch_size, pin_memory=params.pin_memory, num_workers=opt.num_workers,
+                                    drop_last=True, shuffle=False, sampler=val_sampler, collate_fn=BddDataset.collate_fn)
+    
+    return train_dataloader, val_dataloader
 
 if __name__ == '__main__':
     opt = get_args()
-    train(opt)
+    opt.saved_path = opt.saved_path + f'/{opt.project}/'
+    opt.log_path = opt.log_path + f'/{opt.project}/tensorboard/'
+    os.makedirs(opt.log_path, exist_ok=True)
+    os.makedirs(opt.saved_path, exist_ok=True)
+    print(1)
+    mp.spawn(
+        train,
+        args=(opt,),
+        nprocs=opt.num_gpus
+    )

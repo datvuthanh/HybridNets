@@ -26,7 +26,6 @@ class BddDataset(Dataset):
         None
         """
         self.is_train = is_train
-        self.params = params
         self.transform = transform
         self.inputsize = inputsize
         self.Tensor = transforms.ToTensor()
@@ -43,12 +42,7 @@ class BddDataset(Dataset):
         self.mask_root = mask_root / indicator
         self.lane_root = lane_root / indicator
         # self.label_list = self.label_root.iterdir()
-        self.mask_list = self.mask_root.iterdir()
-        self.data_format = params.dataset['data_format']
-        self.scale_factor = params.dataset['scale_factor']
-        self.rotation_factor = params.dataset['rot_factor']
-        self.flip = params.dataset['flip']
-        self.color_rgb = params.dataset['color_rgb']
+        self.mask_list = list(self.mask_root.iterdir())
         self.albumentations_transform = A.Compose([
             A.Blur(p=0.01),
             A.MedianBlur(p=0.01),
@@ -61,6 +55,11 @@ class BddDataset(Dataset):
             additional_targets={'mask0': 'mask'})
 
         self.shapes = np.array(params.dataset['org_img_size'])
+        self.obj_combine = params.obj_combine
+        self.obj_list = params.obj_list
+        self.num_seg_class = params.num_seg_class
+        self.dataset = params.dataset
+        self.traffic_light_color = params.traffic_light_color
         self.db = self._get_db()
 
     def _get_db(self):
@@ -79,7 +78,7 @@ class BddDataset(Dataset):
         print('building database...')
         gt_db = []
         height, width = self.shapes
-        for mask in tqdm(list(self.mask_list)):
+        for mask in tqdm(self.mask_list):
             mask_path = str(mask)
             label_path = mask_path.replace(str(self.mask_root), str(self.label_root)).replace(".png", ".json")
             image_path = mask_path.replace(str(self.mask_root), str(self.img_root)).replace(".png", ".jpg")
@@ -95,10 +94,10 @@ class BddDataset(Dataset):
                 y1 = float(obj['box2d']['y1'])
                 x2 = float(obj['box2d']['x2'])
                 y2 = float(obj['box2d']['y2'])
-                if len(self.params.obj_combine):  # multiple classes into 1 class
+                if len(self.obj_combine):  # multiple classes into 1 class
                     cls_id = 0
                 else:
-                    cls_id = self.params.obj_list.index(category)
+                    cls_id = self.obj_list.index(category)
                 gt[idx][0] = cls_id
                 box = self.convert((width, height), (x1, x2, y1, y2))
                 gt[idx][1:] = list(box)
@@ -169,7 +168,7 @@ class BddDataset(Dataset):
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.params.num_seg_class == 3:
+        if self.num_seg_class == 3:
             seg_label = cv2.imread(data["mask"])
         else:
             seg_label = cv2.imread(data["mask"], 0)
@@ -230,13 +229,13 @@ class BddDataset(Dataset):
             (img, seg_label, lane_label), labels = random_perspective(
                 combination=combination,
                 targets=labels,
-                degrees=self.params.dataset['rot_factor'],
-                translate=self.params.dataset['translate'],
-                scale=self.params.dataset['scale_factor'],
-                shear=self.params.dataset['shear']
+                degrees=self.dataset['rot_factor'],
+                translate=self.dataset['translate'],
+                scale=self.dataset['scale_factor'],
+                shear=self.dataset['shear']
             )
 #             print(labels.shape)
-            augment_hsv(img, hgain=self.params.dataset['hsv_h'], sgain=self.params.dataset['hsv_s'], vgain=self.params.dataset['hsv_v'])
+            augment_hsv(img, hgain=self.dataset['hsv_h'], sgain=self.dataset['hsv_s'], vgain=self.dataset['hsv_v'])
 #             img, seg_label, labels = cutout(combination=combination, labels=labels)
 
             # random left-right flip
@@ -346,12 +345,12 @@ class BddDataset(Dataset):
         remain = []
         for obj in db:
             if 'box2d' in obj.keys():  # obj.has_key('box2d'):
-                if self.params.traffic_light_color and obj['category'] == "traffic light":
+                if self.traffic_light_color and obj['category'] == "traffic light":
                     color = obj['attributes']['trafficLightColor']
                     obj['category'] = "tl_" + color
-                if obj['category'] in self.params.obj_list:  # multi-class
+                if obj['category'] in self.obj_list:  # multi-class
                     remain.append(obj)
-                elif len(self.params.obj_list) == 1 and obj['category'] in self.params.obj_combine:
+                elif len(self.obj_list) == 1 and obj['category'] in self.obj_combine:
                     remain.append(obj)
         return remain
 

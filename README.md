@@ -74,7 +74,9 @@ HybridNets
 │   hybridnets_test.py            # Image inference
 │   hybridnets_test_videos.py     # Video inference
 │   train.py                      # Train script
+│   train_ddp.py                  # DistributedDataParallel training (Multi GPUs)
 │   val.py                        # Validate script
+│   val_ddp.py                    # DistributedDataParralel validating (Multi GPUs)
 │
 ├───encoders                      # https://github.com/qubvel/segmentation_models.pytorch/tree/master/segmentation_models_pytorch/encoders
 │       ...
@@ -92,9 +94,6 @@ HybridNets
     │   plot.py                   # Draw bounding box
     │   smp_metrics.py            # https://github.com/qubvel/segmentation_models.pytorch/blob/master/segmentation_models_pytorch/metrics/functional.py
     │   utils.py                  # Various helper functions (preprocess, postprocess, eval...)
-    │
-    └───sync_batchnorm            # https://github.com/vacancy/Synchronized-BatchNorm-PyTorch/tree/master/sync_batchnorm 
-            ...
 ```
 
 ## Getting Started [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Uc1ZPoPeh-lAhPQ1CloiVUsOIRAVOGWA?usp=sharing)
@@ -186,6 +185,12 @@ python train.py -p bdd100k        # your_project_name
                 --num_epochs 200
 ```
 Please check `python train.py --help` for cheat codes.
+
+**IMPORTANT:** If you want to train on multiple gpus, use `train_ddp.py`. Tested on DGX100 with 8xA100 40GB.  
+Why didn't I combine DDP into the already existing `train.py` script?
+1. Lots of if-else.
+2. Don't want to break functioning stuffs.
+3. Lazy. 
 
 #### 3) Evaluate
 ```bash
