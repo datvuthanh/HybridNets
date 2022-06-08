@@ -186,8 +186,8 @@ python train.py -p bdd100k        # your_project_name
 ```
 Please check `python train.py --help` for cheat codes.
 
-**IMPORTANT:** If you want to train on multiple gpus, use `train_ddp.py`. Tested on DGX100 with 8xA100 40GB.  
-Why didn't I combine DDP into the already existing `train.py` script?
+**IMPORTANT:** If you want to train on multiple gpus, use `train_ddp.py`. Tested on NVIDIA DGX with 8xA100 40GB.  
+Why didn't we combine DDP into the already existing `train.py` script?
 1. Lots of if-else.
 2. Don't want to break functioning stuffs.
 3. Lazy. 
