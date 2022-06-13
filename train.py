@@ -63,6 +63,9 @@ def get_args():
                         help='Whether to plot confusion matrix when valing')
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='Number of GPUs to be used (0 to use CPU)')
+    parser.add_argument('--mosaic', type=boolean_string, default=False,
+                        help='Use mosaic augmentation, '
+                             'recommended when training object detection only.')
 
     args = parser.parse_args()
     return args
@@ -141,7 +144,8 @@ def train(opt):
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ])
+        ]),
+        use_mosaic=opt.mosaic
     )
 
     training_generator = DataLoaderX(
@@ -291,9 +295,9 @@ def train(opt):
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
                                                                                                             seg_annot,
                                                                                                             obj_list=params.obj_list)
-                    cls_loss = cls_loss.mean()
-                    reg_loss = reg_loss.mean()
-                    seg_loss = seg_loss.mean()
+                    cls_loss = cls_loss.mean()# if not opt.freeze_det else 0
+                    reg_loss = reg_loss.mean()# if not opt.freeze_det else 0
+                    seg_loss = seg_loss.mean()# if not opt.freeze_seg else 0
 
                     loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
