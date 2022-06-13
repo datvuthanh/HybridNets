@@ -97,7 +97,7 @@ if use_cuda:
 else:
     x = torch.stack([transform(fi) for fi in input_imgs], 0)
 
-x = x.to(torch.float32 if not use_float16 else torch.float16)
+x = x.to(torch.float16 if use_cuda and use_float16 else torch.float32)
 # print(x.shape)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
                            scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone)

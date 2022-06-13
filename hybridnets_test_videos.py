@@ -111,7 +111,7 @@ for video_index, video_src in enumerate(video_srcs):
         else:
             x = transform(input_img)
 
-        x = x.to(torch.float32 if not use_float16 else torch.float16)
+        x = x.to(torch.float16 if use_cuda and use_float16 else torch.float32)
         x.unsqueeze_(0)
         with torch.no_grad():
             features, regression, classification, anchors, seg = model(x)
