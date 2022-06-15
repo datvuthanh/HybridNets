@@ -140,7 +140,7 @@ HybridNets
 ```
 Update your dataset paths in `projects/your_project_name.yml`.
 
-For BDD100K: [imgs](https://bdd-data.berkeley.edu/), [det_annot](https://drive.google.com/file/d/19CEnZzgLXNNYh1wCvUlNi8UfiBkxVRH0/view), [da_seg_annot](https://drive.google.com/file/d/1NZM-xqJJYZ3bADgLCdrFOa5Vlen3JlkZ/view), [ll_seg_annot](https://drive.google.com/file/d/1o-XpIvHJq0TVUrwlwiMGzwP1CtFsfQ6t/view)
+For BDD100K: [imgs](https://bdd-data.berkeley.edu/), [det_annot](https://drive.google.com/file/d/1d5osZ83rLwda7mfT3zdgljDiQO3f9B5M/view), [da_seg_annot](https://drive.google.com/file/d/1yNYLtZ5GVscx7RzpOd8hS7Mh7Rs6l3Z3/view), [ll_seg_annot](https://drive.google.com/file/d/1BPsyAjikEM9fqsVNMIygvdVVPrmK1ot-/view)
 
 ### Training
 #### 1) Edit or create a new project configuration, using bdd100k.yml as a template
@@ -183,8 +183,11 @@ python train.py -p bdd100k        # your_project_name
                 --lr 1e-5         # learning rate
                 --optim adamw     # adamw | sgd
                 --num_epochs 200
+                --mosaic False
 ```
 Please check `python train.py --help` for cheat codes.
+
+Check [this issue](https://github.com/datvuthanh/HybridNets/issues/34) for mosaic discussion. Please, we need help.
 
 **IMPORTANT:** If you want to train on multiple gpus, use `train_ddp.py`. Tested on NVIDIA DGX with 8xA100 40GB.  
 Why didn't we combine DDP into the already existing `train.py` script?
@@ -194,8 +197,9 @@ Why didn't we combine DDP into the already existing `train.py` script?
 
 #### 3) Evaluate
 ```bash
-python val.py -p bdd100k -c 3 -w checkpoints/weight.pth
+python val.py -w checkpoints/weight.pth
 ```
+Again, check `python val.py --help` for god mode.
 
 ## Training Tips
 ### Anchors :anchor:
