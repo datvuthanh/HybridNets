@@ -4,10 +4,59 @@ from torchvision.ops.boxes import nms as nms_torch
 import torch.nn.functional as F
 import math
 from functools import partial
+from hybridnets.loss import FocalLoss, FocalLossSeg, TverskyLoss
 
 
 def nms(dets, thresh):
     return nms_torch(dets[:, :4], dets[:, 4], thresh)
+
+
+class ModelWithLoss(nn.Module):
+    def __init__(self, model, debug=False):
+        super().__init__()
+        self.criterion = FocalLoss()
+        self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
+        self.seg_criterion2 = FocalLossSeg(mode='multilabel', alpha=0.25)
+        self.model = model
+        self.debug = debug
+
+    def forward(self, imgs, annotations, seg_annot, obj_list=None):
+        _, regression, classification, anchors, segmentation = self.model(imgs)
+
+        if self.debug:
+            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
+                                                imgs=imgs, obj_list=obj_list)
+            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
+            focal_loss = self.seg_criterion2(segmentation, seg_annot)
+        else:
+            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
+            tversky_loss = self.seg_criterion1(segmentation, seg_annot)
+            focal_loss = self.seg_criterion2(segmentation, seg_annot)
+
+            # Visualization
+            # seg_0 = seg_annot[0]
+            # # print('bbb', seg_0.shape)
+            # seg_0 = torch.argmax(seg_0, dim = 0)
+            # # print('before', seg_0.shape)
+            # seg_0 = seg_0.cpu().numpy()
+            #     #.transpose(1, 2, 0)
+            # print(seg_0.shape)
+            #
+            # anh = np.zeros((384,640,3))
+            #
+            # anh[seg_0 == 0] = (255,0,0)
+            # anh[seg_0 == 1] = (0,255,0)
+            # anh[seg_0 == 2] = (0,0,255)
+            #
+            # anh = np.uint8(anh)
+            #
+            # cv2.imwrite('anh.jpg',anh)
+
+        seg_loss = tversky_loss + 1 * focal_loss
+        # print("TVERSKY", tversky_loss)
+        # print("FOCAL", focal_loss)
+
+        return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
 
 class SeparableConvBlock(nn.Module):
