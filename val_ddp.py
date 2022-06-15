@@ -35,7 +35,7 @@ def val(model, rank, optimizer, val_generator, params, opt, writer, epoch, step,
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
-    progress_bar = tqdm(val_generator)
+    progress_bar = tqdm(val_generator, ascii=True)
     for iter, data in enumerate(progress_bar):
         if rank == 0:
             progress_bar.update()

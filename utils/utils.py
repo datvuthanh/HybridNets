@@ -388,7 +388,7 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='precision
 
     # Compute F1 score (harmonic mean of precision and recall)
     f1 = 2 * p * r / (p + r + 1e-16)
-    i=f1.mean(0).argmax()
+    i=r.mean(0).argmax()
 
     if plot:
         plot_pr_curve(px, py, ap, save_dir, names)

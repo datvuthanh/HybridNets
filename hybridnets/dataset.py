@@ -80,7 +80,7 @@ class BddDataset(Dataset):
         print('building database...')
         gt_db = []
         height, width = self.shapes
-        for mask in tqdm(self.mask_list):
+        for mask in tqdm(self.mask_list, ascii=True):
             mask_path = str(mask)
             label_path = mask_path.replace(str(self.mask_root), str(self.label_root)).replace(".png", ".json")
             image_path = mask_path.replace(str(self.mask_root), str(self.img_root)).replace(".png", ".jpg")
@@ -266,26 +266,28 @@ class BddDataset(Dataset):
         if self.is_train:
             if self.use_mosaic:
             # TODO: this doubles training time with inherent stuttering in tqdm, prob cpu or io bottleneck, does prefetch_generator work with ddp?
+            # TODO: updated, mosaic is inherently slow, maybe cache the images in RAM? maybe it was IO bottleneck of reading 4 images everytime? time it
             # honestly, mosaic is not for road and lane segmentation anyway
             # you cant expect road and lane to be split up in 4 separate corners in an image, do you?
             # only use mosaic with freeze_seg :)
                 img, labels, seg_label, lane_label, (h0, w0), (h, w), path = self.load_mosaic(idx)
-                if random.random() < 0.2:
-                    img2, labels2, _, _, (_, _), (_, _), path = self.load_mosaic(random.randint(0, len(self.db) - 1))
-                    img, labels = mixup(img, labels, img2, labels2)
+                # mixup is double mosaic, really slow
+                # if random.random() < 0.2:
+                #     img2, labels2, _, _, (_, _), (_, _), path = self.load_mosaic(random.randint(0, len(self.db) - 1))
+                #     img, labels = mixup(img, labels, img2, labels2)
             # albumentations
             else:
                 img, labels, seg_label, lane_label, (h0, w0), (h, w), path = self.load_image(idx)
-            try:
-                new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label,
-                                                    bboxes=labels[:, 1:] if len(labels) else labels,
-                                                    class_labels=labels[:, 0] if len(labels) else labels)
-                img = new['image']
-                labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])]) if len(labels) else labels
-                seg_label = new['mask']
-                lane_label = new['mask0']
-            except ValueError:  # bbox have width or height == 0
-                pass
+            # try:
+            #     new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label,
+            #                                         bboxes=labels[:, 1:] if len(labels) else labels,
+            #                                         class_labels=labels[:, 0] if len(labels) else labels)
+            #     img = new['image']
+            #     labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])]) if len(labels) else labels
+            #     seg_label = new['mask']
+            #     lane_label = new['mask0']
+            # except ValueError:  # bbox have width or height == 0
+            #     pass
 
             # augmentation
             combination = (img, seg_label, lane_label)

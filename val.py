@@ -33,7 +33,7 @@ def val(model, optimizer, val_generator, params, opt, writer, epoch, step, best_
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
-    val_loader = tqdm(val_generator)
+    val_loader = tqdm(val_generator, ascii=True)
     for iter, data in enumerate(val_loader):
         imgs = data['img']
         annot = data['annot']
@@ -253,7 +253,7 @@ def val_from_cmd(model, val_generator, params, opt):
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
-    val_loader = tqdm(val_generator)    
+    val_loader = tqdm(val_generator, ascii=True)    
     for iter, data in enumerate(val_loader):
         imgs = data['img']
         annot = data['annot']

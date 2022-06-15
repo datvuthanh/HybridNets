@@ -275,7 +275,7 @@ def train(opt):
                 continue
 
             epoch_loss = []
-            progress_bar = tqdm(training_generator)
+            progress_bar = tqdm(training_generator, ascii=True)
             for iter, data in enumerate(progress_bar):
                 if iter < step - last_epoch * num_iter_per_epoch:
                     progress_bar.update()
@@ -295,9 +295,9 @@ def train(opt):
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
                                                                                                             seg_annot,
                                                                                                             obj_list=params.obj_list)
-                    cls_loss = cls_loss.mean()# if not opt.freeze_det else 0
-                    reg_loss = reg_loss.mean()# if not opt.freeze_det else 0
-                    seg_loss = seg_loss.mean()# if not opt.freeze_seg else 0
+                    cls_loss = cls_loss.mean() #if not opt.freeze_det else torch.Tensor(0)
+                    reg_loss = reg_loss.mean() #if not opt.freeze_det else torch.Tensor(0)
+                    seg_loss = seg_loss.mean() #if not opt.freeze_seg else torch.Tensor(0)
 
                     loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
