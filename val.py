@@ -164,25 +164,29 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     seg_loss = np.mean(loss_segmentation_ls)
     loss = cls_loss + reg_loss + seg_loss
 
+    for i in range(len(params.seg_list) + 1):
+        iou_ls[i] = np.concatenate(iou_ls[i])
+        f1_ls[i] = np.concatenate(f1_ls[i])
+
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
-            epoch, opt.num_epochs if opt.num_epochs else 0, cls_loss, reg_loss, seg_loss, loss))
+            epoch, opt.num_epochs if is_training else 0, cls_loss, reg_loss, seg_loss, loss))
     if is_training:
         writer.add_scalars('Loss', {'val': loss}, step)
         writer.add_scalars('Regression_loss', {'val': reg_loss}, step)
         writer.add_scalars('Classfication_loss', {'val': cls_loss}, step)
         writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
 
-    if opt.cal_map or not is_training:
+    if opt.cal_map:
         # print(len(iou_ls[0]))
         iou_score = np.mean(iou_ls)
         # print(iou_score)
         f1_score = np.mean(f1_ls)
 
-        iou_first_decoder = iou_ls[0] + iou_ls[1]
+        iou_first_decoder = (iou_ls[0] + iou_ls[1]) / 2
         iou_first_decoder = np.mean(iou_first_decoder)
 
-        iou_second_decoder = iou_ls[0] + iou_ls[2]
+        iou_second_decoder = (iou_ls[0] + iou_ls[2]) / 2
         iou_second_decoder = np.mean(iou_second_decoder)
 
         for i in range(len(params.seg_list) + 1):
@@ -259,16 +263,18 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument('-p', '--project', type=str, default='coco', help='Project file that contains parameters')
+    ap.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
     ap.add_argument('-bb', '--backbone', type=str,
                    help='Use timm to create another backbone replacing efficientnet. '
                    'https://github.com/rwightman/pytorch-image-models')
-    ap.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficients of efficientnet backbone')
-    ap.add_argument('-w', '--weights', type=str, default=None, help='/path/to/weights')
+    ap.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficients of efficientnet backbone')
+    ap.add_argument('-w', '--weights', type=str, default='weights/hybridnets.pth', help='/path/to/weights')
     ap.add_argument('-n', '--num_workers', type=int, default=12, help='Num_workers of dataloader')
     ap.add_argument('--batch_size', type=int, default=12, help='The number of images per batch among all devices')
     ap.add_argument('-v', '--verbose', type=boolean_string, default=True,
                     help='Whether to print results per class when valing')
+    ap.add_argument('--cal_map', type=boolean_string, default=True,
+                        help='Calculate mAP in validation')
     ap.add_argument('--plots', type=boolean_string, default=True,
                     help='Whether to plot confusion matrix when valing')
     ap.add_argument('--num_gpus', type=int, default=1,

@@ -349,16 +349,16 @@ class BddDataset(Dataset):
 
         (img, seg_label, lane_label), ratio, pad = letterbox((img, seg_label, lane_label), (self.inputsize[1], self.inputsize[0]), auto=True,
                                                              scaleup=self.is_train)
-        shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
-
-        # update labels after letterbox
-        labels[:, 1] = ratio[0] * labels[:, 1] + pad[0]
-        labels[:, 2] = ratio[1] * labels[:, 2] + pad[1]
-        labels[:, 3] = ratio[0] * labels[:, 3] + pad[0]
-        labels[:, 4] = ratio[1] * labels[:, 4] + pad[1]        
+        shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling  
         
         labels_app = np.array([])
         if len(labels):
+            # update labels after letterbox
+            labels[:, 1] = ratio[0] * labels[:, 1] + pad[0]
+            labels[:, 2] = ratio[1] * labels[:, 2] + pad[1]
+            labels[:, 3] = ratio[0] * labels[:, 3] + pad[0]
+            labels[:, 4] = ratio[1] * labels[:, 4] + pad[1]     
+
             labels_app = np.zeros((len(labels), 5))
             labels_app[:, 0:4] = labels[:, 1:5]
             labels_app[:, 4] = labels[:, 0]
