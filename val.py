@@ -15,7 +15,6 @@ from hybridnets.model import ModelWithLoss
 
 @torch.no_grad()
 def val(model, val_generator, params, opt, is_training, **kwargs):
-    # optimizer, writer, epoch, step, best_fitness, best_loss, best_epoch
     model.eval()
 
     optimizer = kwargs.get('optimizer', None)
@@ -29,7 +28,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     loss_regression_ls = []
     loss_classification_ls = []
     loss_segmentation_ls = []
-    jdict, stats, ap, ap_class = [], [], [], []
+    stats, ap, ap_class = [], [], []
     iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
     num_thresholds = iou_thresholds.numel()
     names = {i: v for i, v in enumerate(params.obj_list)}
@@ -37,10 +36,10 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
     s = ('%15s' + '%11s' * 14) % (
-    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mF1', 'fIoU', 'sIoU', 'rIoU', 'rF1', 'lIoU', 'lF1')
-    dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc', 'fIoU', 'sIoU', 'rIoU', 'rAcc', 'lIoU', 'lAcc')
+    p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     iou_ls = [[] for _ in range(3)]
-    f1_ls = [[] for _ in range(3)]
+    acc_ls = [[] for _ in range(3)]
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
@@ -145,11 +144,11 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
 
             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
             #         print(iou)
-            f1 = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
+            acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
 
             for i in range(len(params.seg_list) + 1):
                 iou_ls[i].append(iou.T[i].detach().cpu().numpy())
-                f1_ls[i].append(f1.T[i].detach().cpu().numpy())
+                acc_ls[i].append(acc.T[i].detach().cpu().numpy())
 
         loss = cls_loss + reg_loss + seg_loss
         if loss == 0 or not torch.isfinite(loss):
@@ -166,7 +165,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
 
     for i in range(len(params.seg_list) + 1):
         iou_ls[i] = np.concatenate(iou_ls[i])
-        f1_ls[i] = np.concatenate(f1_ls[i])
+        acc_ls[i] = np.concatenate(acc_ls[i])
 
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
@@ -181,7 +180,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
         # print(len(iou_ls[0]))
         iou_score = np.mean(iou_ls)
         # print(iou_score)
-        f1_score = np.mean(f1_ls)
+        acc_score = np.mean(acc_ls)
 
         iou_first_decoder = (iou_ls[0] + iou_ls[1]) / 2
         iou_first_decoder = np.mean(iou_first_decoder)
@@ -191,7 +190,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
 
         for i in range(len(params.seg_list) + 1):
             iou_ls[i] = np.mean(iou_ls[i])
-            f1_ls[i] = np.mean(f1_ls[i])
+            acc_ls[i] = np.mean(acc_ls[i])
 
         # Compute statistics
         stats = [np.concatenate(x, 0) for x in zip(*stats)]
@@ -216,8 +215,8 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
         # Print results
         print(s)
         pf = '%15s' + '%11i' * 2 + '%11.3g' * 12  # print format
-        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, f1_score, iou_first_decoder, iou_second_decoder,
-                    iou_ls[1], f1_ls[1], iou_ls[2], f1_ls[2]))
+        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score, iou_first_decoder, iou_second_decoder,
+                    iou_ls[1], acc_ls[1], iou_ls[2], acc_ls[2]))
 
         # Print results per class
         if opt.verbose and nc > 1 and len(stats):
@@ -230,9 +229,9 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
             confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
             confusion_matrix.tp_fp()
 
-        results = (mp, mr, map50, map, iou_score, f1_score, loss)
+        results = (mp, mr, map50, map, iou_score, acc_score, loss)
         fi = fitness(
-            np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, f1, loss ]
+            np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, iou, acc, loss ]
 
         # if calculating map, save by best fitness
         if is_training and fi > best_fitness:
@@ -313,7 +312,6 @@ if __name__ == "__main__":
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
                                seg_classes=len(params.seg_list), backbone_name=args.backbone)
     
-#     print(model)
     try:
         model.load_state_dict(torch.load(weights_path))
     except:
