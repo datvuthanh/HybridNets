@@ -85,7 +85,7 @@ for ori_img in ori_imgs:
     input_img = cv2.resize(ori_img, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
     h, w = input_img.shape[:2]
 
-    (input_img, _, _), ratio, pad = letterbox((input_img, input_img.copy(), input_img.copy()), resized_shape, auto=True,
+    (input_img, _), ratio, pad = letterbox((input_img, None), resized_shape, auto=True,
                                               scaleup=False)
 
     input_imgs.append(input_img)
@@ -117,11 +117,11 @@ with torch.no_grad():
     features, regression, classification, anchors, seg = model(x)
 
     seg = seg[:, :, 12:372, :]
-    da_seg_mask = torch.nn.functional.interpolate(seg, size=[720, 1280], mode='nearest')
-    _, da_seg_mask = torch.max(da_seg_mask, 1)
+    _, da_seg_mask = torch.max(seg, 1)
     for i in range(da_seg_mask.size(0)):
         #   print(i)
         da_seg_mask_ = da_seg_mask[i].squeeze().cpu().numpy().round()
+        da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=shapes[i][0][::-1], interpolation=cv2.INTER_NEAREST)
         color_area = np.zeros((da_seg_mask_.shape[0], da_seg_mask_.shape[1], 3), dtype=np.uint8)
         color_area[da_seg_mask_ == 1] = [0, 255, 0]
         color_area[da_seg_mask_ == 2] = [0, 0, 255]
