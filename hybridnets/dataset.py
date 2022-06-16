@@ -57,7 +57,6 @@ class BddDataset(Dataset):
         self.shapes = np.array(params.dataset['org_img_size'])
         self.obj_combine = params.obj_combine
         self.obj_list = params.obj_list
-        self.num_seg_class = params.num_seg_class
         self.dataset = params.dataset
         self.traffic_light_color = params.traffic_light_color
         self.use_mosaic = use_mosaic
@@ -153,10 +152,7 @@ class BddDataset(Dataset):
         det_label = data["label"]
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if self.num_seg_class == 3:
-            seg_label = cv2.imread(data["mask"])
-        else:
-            seg_label = cv2.imread(data["mask"], 0)
+        seg_label = cv2.imread(data["mask"], 0)
         lane_label = cv2.imread(data["lane"], 0)
 
         resized_shape = self.inputsize

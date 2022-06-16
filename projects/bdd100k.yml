@@ -54,4 +54,3 @@ model:
   - 384
 need_autoanchor: false
 pin_memory: false
-num_seg_class: 2
