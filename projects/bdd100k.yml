@@ -29,7 +29,6 @@ seg_list: ['road',
           'lane']
 
 dataset:
-  color_rgb: false
   dataroot: ./datasets/bdd100k
   labelroot: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
   segroot:
@@ -50,6 +49,7 @@ dataset:
   test_set: val
   train_set: train
   translate: 0.1
+  color_rgb: false
 model:
   image_size:
   - 640
