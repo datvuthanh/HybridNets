@@ -10,6 +10,7 @@ from utils.utils import letterbox, augment_hsv, random_perspective, box_candidat
 from tqdm.autonotebook import tqdm
 import json
 import albumentations as A
+from collections import OrderedDict
 
 
 class BddDataset(Dataset):
@@ -31,18 +32,18 @@ class BddDataset(Dataset):
         self.Tensor = transforms.ToTensor()
         img_root = Path(params.dataset['dataroot'])
         label_root = Path(params.dataset['labelroot'])
-        mask_root = Path(params.dataset['maskroot'])
-        lane_root = Path(params.dataset['laneroot'])
+        seg_root = params.dataset['segroot']
+        self.seg_list = params.seg_list
         if is_train:
             indicator = params.dataset['train_set']
         else:
             indicator = params.dataset['test_set']
         self.img_root = img_root / indicator
         self.label_root = label_root / indicator
-        self.mask_root = mask_root / indicator
-        self.lane_root = lane_root / indicator
-        # self.label_list = self.label_root.iterdir()
-        self.mask_list = list(self.mask_root.iterdir())
+        self.label_list = list(self.label_root.iterdir())
+        self.seg_root = []
+        for root in seg_root:
+            self.seg_root.append(Path(root) / indicator)
         self.albumentations_transform = A.Compose([
             A.Blur(p=0.01),
             A.MedianBlur(p=0.01),
@@ -79,11 +80,12 @@ class BddDataset(Dataset):
         print('building database...')
         gt_db = []
         height, width = self.shapes
-        for mask in tqdm(self.mask_list, ascii=True):
-            mask_path = str(mask)
-            label_path = mask_path.replace(str(self.mask_root), str(self.label_root)).replace(".png", ".json")
-            image_path = mask_path.replace(str(self.mask_root), str(self.img_root)).replace(".png", ".jpg")
-            lane_path = mask_path.replace(str(self.mask_root), str(self.lane_root))
+        for label in tqdm(self.label_list[:50], ascii=True):
+            label_path = str(label)
+            image_path = label_path.replace(str(self.label_root), str(self.img_root)).replace(".json", ".jpg")
+            seg_path = {}
+            for i in range(len(self.seg_list)):
+                seg_path[self.seg_list[i]] = label_path.replace(str(self.label_root), str(self.seg_root[i])).replace(".json", ".png")
             with open(label_path, 'r') as f:
                 label = json.load(f)
             data = label['frames'][0]['objects']
@@ -103,12 +105,12 @@ class BddDataset(Dataset):
                 box = self.convert((width, height), (x1, x2, y1, y2))
                 gt[idx][1:] = list(box)
 
-            rec = [{
+            rec = {
                 'image': image_path,
                 'label': gt,
-                'mask': mask_path,
-                'lane': lane_path
-            }]
+            }
+            # Since seg_path is a dynamic dict
+            rec = {**rec, **seg_path}
 
             # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
             # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -130,7 +132,7 @@ class BddDataset(Dataset):
             #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
             # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
 
-            gt_db += rec
+            gt_db.append(rec)
         print('database build finish')
         return gt_db
 
@@ -152,8 +154,9 @@ class BddDataset(Dataset):
         det_label = data["label"]
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        seg_label = cv2.imread(data["mask"], 0)
-        lane_label = cv2.imread(data["lane"], 0)
+        seg_label = OrderedDict()
+        for seg_class in self.seg_list:
+            seg_label[seg_class] = cv2.imread(data[seg_class], 0)
 
         resized_shape = self.inputsize
         if isinstance(resized_shape, list):
@@ -163,8 +166,8 @@ class BddDataset(Dataset):
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 else cv2.INTER_LINEAR
             img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
-            seg_label = cv2.resize(seg_label, (int(w0 * r), int(h0 * r)), interpolation=interp)
-            lane_label = cv2.resize(lane_label, (int(w0 * r), int(h0 * r)), interpolation=interp)
+            for seg_class in self.seg_list:
+                seg_label[seg_class] = cv2.resize(seg_label[seg_class], (int(w0 * r), int(h0 * r)), interpolation=interp)
         h, w = img.shape[:2]
     
         labels = []
@@ -183,7 +186,7 @@ class BddDataset(Dataset):
 #           img_clone = cv2.rectangle(img_clone, (x1,y1), (x2,y2), (255,0,0), 1)
 #         cv2.imwrite("label-{}.jpg".format(index), img_clone)
     
-        return img, labels, seg_label, lane_label, (h0, w0), (h,w), data['image']
+        return img, labels, seg_label, (h0, w0), (h,w), data['image']
 
     def load_mosaic(self, index):
     # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
@@ -198,7 +201,7 @@ class BddDataset(Dataset):
         random.shuffle(indices)
         for i, index in enumerate(indices):
             # Load image
-            img, labels, seg_label, lane_label, (h0,w0), (h, w), path = self.load_image(index)
+            img, labels, seg_label, (h0,w0), (h, w), path = self.load_image(index)
                         
             # place img in img4
             if i == 0:  # top left
@@ -239,7 +242,7 @@ class BddDataset(Dataset):
         labels4 = labels4[i]
         labels4[:] = new[i] 
 
-        return img4, labels4, seg_label, lane_label, (h0, w0), (h, w), path
+        return img4, labels4, seg_label, (h0, w0), (h, w), path
 
     def __getitem__(self, idx):
         """
@@ -266,14 +269,15 @@ class BddDataset(Dataset):
             # honestly, mosaic is not for road and lane segmentation anyway
             # you cant expect road and lane to be split up in 4 separate corners in an image, do you?
             # only use mosaic with freeze_seg :)
-                img, labels, seg_label, lane_label, (h0, w0), (h, w), path = self.load_mosaic(idx)
+                img, labels, seg_label, (h0, w0), (h, w), path = self.load_mosaic(idx)
                 # mixup is double mosaic, really slow
                 # if random.random() < 0.2:
-                #     img2, labels2, _, _, (_, _), (_, _), path = self.load_mosaic(random.randint(0, len(self.db) - 1))
+                #     img2, labels2, _, (_, _), (_, _), _ = self.load_mosaic(random.randint(0, len(self.db) - 1))
                 #     img, labels = mixup(img, labels, img2, labels2)
             # albumentations
             else:
-                img, labels, seg_label, lane_label, (h0, w0), (h, w), path = self.load_image(idx)
+                img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
+            # TODO: multi-class seg with albumentations
             # try:
             #     new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label,
             #                                         bboxes=labels[:, 1:] if len(labels) else labels,
@@ -286,8 +290,8 @@ class BddDataset(Dataset):
             #     pass
 
             # augmentation
-            combination = (img, seg_label, lane_label)
-            (img, seg_label, lane_label), labels = random_perspective(
+            combination = (img, seg_label)
+            (img, seg_label), labels = random_perspective(
                 combination=combination,
                 targets=labels,
                 degrees=self.dataset['rot_factor'],
@@ -315,15 +319,15 @@ class BddDataset(Dataset):
                     labels[:, 3] = cols - x_tmp
                 
                 # Segmentation
-                seg_label = np.fliplr(seg_label)
-                lane_label = np.fliplr(lane_label)
+                for seg_class in seg_label:
+                    seg_label[seg_class] = np.fliplr(seg_label[seg_class])
+                    # lane_label = np.fliplr(lane_label)
 
             # random up-down flip
             ud_flip = False
             if ud_flip and random.random() < 0.5:
                 img = np.flipud(img)
-                seg_label = np.filpud(seg_label)
-                lane_label = np.filpud(lane_label)
+
                 if len(labels):
                     rows, cols, channels = img.shape
 
@@ -334,8 +338,13 @@ class BddDataset(Dataset):
 
                     labels[:, 2] = rows - y2
                     labels[:, 4] = rows - y_tmp
+
+                # Segmentation
+                for seg_class in seg_label:
+                    seg_label[seg_class] = np.filpud(seg_label[seg_class])
+                
         else:
-            img, labels, seg_label, lane_label, (h0, w0), (h, w), path = self.load_image(idx)
+            img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
 
         # for anno in labels:
         #   x1, y1, x2, y2 = [int(x) for x in anno[1:5]]
@@ -343,7 +352,7 @@ class BddDataset(Dataset):
         #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 3)
         # cv2.imwrite(data["image"].split("/")[-1], img)
 
-        (img, seg_label, lane_label), ratio, pad = letterbox((img, seg_label, lane_label), (self.inputsize[1], self.inputsize[0]), auto=True,
+        (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=True,
                                                              scaleup=self.is_train)
         shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling  
         
@@ -361,30 +370,35 @@ class BddDataset(Dataset):
 
         img = np.ascontiguousarray(img)
 
-        _, seg1 = cv2.threshold(seg_label, 1, 255, cv2.THRESH_BINARY)
-        _, lane1 = cv2.threshold(lane_label, 1, 255, cv2.THRESH_BINARY)
-        # prefer lane
-        seg1 = seg1 - (seg1 & lane1)
+        for seg_class in seg_label:
+            _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 1, 255, cv2.THRESH_BINARY)
+        
+        # special treatment for lane-line of bdd100k for our dataset
+        # since we increase lane-line from 2 to 8 pixels, we must take care of the overlap to other segmentation classes
+        # e.g.: a pixel belongs to both road and lane-line, then we must prefer lane, or metrics would be wrong
+        if 'lane' in seg_label:
+            for seg_class in seg_label:
+                if seg_class != 'lane': seg_label[seg_class] -= seg_label['lane']
 
-        union = seg1 | lane1
-        # print(union.shape)
+        union = np.zeros(img.shape[:2], dtype=np.uint8)
+        for seg_class in seg_label:
+            union |= seg_label[seg_class]
         background = 255 - union
 
         # print(img.shape)
         # print(lane1.shape)
         # img_copy = img.copy()
-        # img_copy[seg1 == 255] = (0, 255, 0)
+        # img_copy[seg_label['road'] == 255] = (0, 255, 0)
         # cv2.imwrite('_copy.jpg', img_copy)
-        # cv2.imwrite('_seg.jpg', seg1)
+        # cv2.imwrite('_seg.jpg', seg_label['road'])
+        # cv2.imwrite('_background.jpg', background)
         # cv2.imwrite('{}-seg.jpg'.format(data['image'].split('/')[-1]),seg1)
 
-        seg1 = self.Tensor(seg1)
-        lane1 = self.Tensor(lane1)
+        for seg_class in seg_label:
+            seg_label[seg_class] = self.Tensor(seg_label[seg_class])
         background = self.Tensor(background)
-
-        segmentation = torch.cat([background, seg1, lane1], dim=0)
+        segmentation = torch.cat([background, *seg_label.values()], dim=0)
         # print(segmentation.size())
-        # print(seg1.shape)
 
         # for anno in labels_app:
         #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]

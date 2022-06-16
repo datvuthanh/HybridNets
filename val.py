@@ -35,11 +35,15 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     nc = len(names)
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
-    s = ('%15s' + '%11s' * 14) % (
-    'Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc', 'fIoU', 'sIoU', 'rIoU', 'rAcc', 'lIoU', 'lAcc')
+    s_seg = ' ' * (15 + 11 * 8)
+    s = ('%-15s' + '%-11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc')
+    for i in range(len(params.seg_list)):
+            # s_seg += '{:^33s}'.format(params.seg_list[i])
+            s_seg += '%-33s' % params.seg_list[i]
+            s += ('%-11s' * 3) % ('mIoU', 'IoU', 'Acc')
     p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    iou_ls = [[] for _ in range(3)]
-    acc_ls = [[] for _ in range(3)]
+    iou_ls = [[] for _ in range(len(params.seg_list)+1)]
+    acc_ls = [[] for _ in range(len(params.seg_list)+1)]
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
@@ -135,9 +139,14 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
             _, segmentation = torch.max(segmentation, 1)
             # _, seg_annot = torch.max(seg_annot, 1)
             seg = torch.zeros((seg_annot.size(0), 3, 384, 640), dtype=torch.int32)
-            seg[:, 0, ...][segmentation == 0] = 1
-            seg[:, 1, ...][segmentation == 1] = 1
-            seg[:, 2, ...][segmentation == 2] = 1
+            # seg[:, 0, ...][segmentation == 0] = 1
+            # seg[:, 1, ...][segmentation == 1] = 1
+            # seg[:, 2, ...][segmentation == 2] = 1
+
+            # TODO: parallelize this
+            for i in range(len(params.seg_list)+1):
+                seg[:, i, ...][segmentation == i] = 1
+            
 
             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
                                                                    mode='multilabel', threshold=None)
@@ -182,11 +191,15 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
         # print(iou_score)
         acc_score = np.mean(acc_ls)
 
-        iou_first_decoder = (iou_ls[0] + iou_ls[1]) / 2
-        iou_first_decoder = np.mean(iou_first_decoder)
+        miou_ls = []
+        for i in range(len(params.seg_list)):
+            miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i]) / 2))
 
-        iou_second_decoder = (iou_ls[0] + iou_ls[2]) / 2
-        iou_second_decoder = np.mean(iou_second_decoder)
+        # iou_first_decoder = (iou_ls[0] + iou_ls[1]) / 2
+        # iou_first_decoder = np.mean(iou_first_decoder)
+
+        # iou_second_decoder = (iou_ls[0] + iou_ls[2]) / 2
+        # iou_second_decoder = np.mean(iou_second_decoder)
 
         for i in range(len(params.seg_list) + 1):
             iou_ls[i] = np.mean(iou_ls[i])
@@ -213,14 +226,16 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
             nt = torch.zeros(1)
 
         # Print results
+        print(s_seg)
         print(s)
-        pf = '%15s' + '%11i' * 2 + '%11.3g' * 12  # print format
-        print(pf % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score, iou_first_decoder, iou_second_decoder,
-                    iou_ls[1], acc_ls[1], iou_ls[2], acc_ls[2]))
+        pf = ('%-15s' + '%-11i' * 2 + '%-11.3g' * 6) % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score)
+        for i in range(len(params.seg_list)):
+            pf += ('%-11.3g' * 3) % (miou_ls[i], iou_ls[i+1], acc_ls[i+1])
+        print(pf)
 
         # Print results per class
         if opt.verbose and nc > 1 and len(stats):
-            pf = '%15s' + '%11i' * 2 + '%11.3g' * 4
+            pf = '%-15s' + '%-11i' * 2 + '%-11.3g' * 4
             for i, c in enumerate(ap_class):
                 print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 

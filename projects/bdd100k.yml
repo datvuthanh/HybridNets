@@ -32,8 +32,10 @@ dataset:
   color_rgb: false
   dataroot: ./datasets/bdd100k
   labelroot: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
-  laneroot: ./datasets/bdd_lane_gt
-  maskroot: ./datasets/bdd_seg_gt
+  segroot:
+  # must be in correct order with seg_list
+  - ./datasets/bdd_seg_gt
+  - ./datasets/bdd_lane_gt
   data_format: jpg
   flip: true
   hsv_h: 0.015
