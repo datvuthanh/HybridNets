@@ -27,6 +27,10 @@ parser.add_argument('--float16', type=boolean_string, default=True, help="Use fl
 args = parser.parse_args()
 
 params = Params(f'projects/{args.project}.yml')
+color_list_seg = {}
+for seg_class in params.seg_list:
+    # edit your color here if you wanna fix to your liking
+    color_list_seg[seg_class] = list(np.random.choice(range(256), size=3))
 compound_coef = args.compound_coef
 source = args.source
 if source.endswith("/"):
@@ -116,13 +120,14 @@ for video_index, video_src in enumerate(video_srcs):
         with torch.no_grad():
             features, regression, classification, anchors, seg = model(x)
 
-            seg = seg[:, :, 12:372, :]
+            seg = seg[:, :, int(pad[1]):int(h+pad[1]), int(pad[0]):int(w+pad[0])]
             _, da_seg_mask = torch.max(seg, 1)
             da_seg_mask_ = da_seg_mask[0].squeeze().cpu().numpy().round()
-            da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=(h0, w0), interpolation=cv2.INTER_NEAREST)
+            da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=(w0, h0), interpolation=cv2.INTER_NEAREST)
             color_area = np.zeros((da_seg_mask_.shape[0], da_seg_mask_.shape[1], 3), dtype=np.uint8)
-            color_area[da_seg_mask_ == 1] = [0, 255, 0]
-            color_area[da_seg_mask_ == 2] = [0, 0, 255]
+
+            for index, seg_class in enumerate(params.seg_list):
+                color_area[da_seg_mask_ == index+1] = color_list_seg[seg_class]
             color_seg = color_area[..., ::-1]
 
             # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)

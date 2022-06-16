@@ -31,6 +31,10 @@ parser.add_argument('--float16', type=boolean_string, default=True, help="Use fl
 args = parser.parse_args()
 
 params = Params(f'projects/{args.project}.yml')
+color_list_seg = {}
+for seg_class in params.seg_list:
+    # edit your color here if you wanna fix to your liking
+    color_list_seg[seg_class] = list(np.random.choice(range(256), size=3))
 compound_coef = args.compound_coef
 source = args.source
 if source.endswith("/"):
@@ -116,15 +120,17 @@ if use_cuda:
 with torch.no_grad():
     features, regression, classification, anchors, seg = model(x)
 
-    seg = seg[:, :, 12:372, :]
     _, da_seg_mask = torch.max(seg, 1)
     for i in range(da_seg_mask.size(0)):
         #   print(i)
         da_seg_mask_ = da_seg_mask[i].squeeze().cpu().numpy().round()
+        pad_h = int(shapes[i][1][1][1])
+        pad_w = int(shapes[i][1][1][0])
+        da_seg_mask_ = da_seg_mask_[pad_h:da_seg_mask_.shape[0]-pad_h, pad_w:da_seg_mask_.shape[1]-pad_w]
         da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=shapes[i][0][::-1], interpolation=cv2.INTER_NEAREST)
         color_area = np.zeros((da_seg_mask_.shape[0], da_seg_mask_.shape[1], 3), dtype=np.uint8)
-        color_area[da_seg_mask_ == 1] = [0, 255, 0]
-        color_area[da_seg_mask_ == 2] = [0, 0, 255]
+        for index, seg_class in enumerate(params.seg_list):
+                color_area[da_seg_mask_ == index+1] = color_list_seg[seg_class]
         color_seg = color_area[..., ::-1]
         # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)
 
