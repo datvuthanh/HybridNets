@@ -80,7 +80,7 @@ class BddDataset(Dataset):
         print('building database...')
         gt_db = []
         height, width = self.shapes
-        for label in tqdm(self.label_list[:50], ascii=True):
+        for label in tqdm(self.label_list, ascii=True):
             label_path = str(label)
             image_path = label_path.replace(str(self.label_root), str(self.img_root)).replace(".json", ".jpg")
             seg_path = {}
