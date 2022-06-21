@@ -139,7 +139,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
             _, segmentation = torch.max(segmentation, 1)
             # _, seg_annot = torch.max(seg_annot, 1)
             # TODO: this is assuming all input images are of the same size, which I might fix if an issue is raised lol
-            seg = torch.zeros((seg_annot.size(0), len(params.seg_list)+1, imgs[0][1], imgs[0][2]), dtype=torch.int32)
+            seg = torch.zeros((seg_annot.size(0), len(params.seg_list)+1, imgs[0].size(1), imgs[0].size(2)), dtype=torch.int32)
             # seg[:, 0, ...][segmentation == 0] = 1
             # seg[:, 1, ...][segmentation == 1] = 1
             # seg[:, 2, ...][segmentation == 2] = 1
