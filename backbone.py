@@ -56,10 +56,11 @@ class HybridNetsBackbone(nn.Module):
         # self.decoder = DecoderModule()
         self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
 
+        # TODO: sigmoid for multi-label
         self.segmentation_head = SegmentationHead(
             in_channels=64,
-            out_channels=self.seg_classes+1 if self.seg_classes > 1 else self.seg_classes,
-            activation='softmax2d' if self.seg_classes > 1 else 'sigmoid',
+            out_channels=self.seg_classes+1,
+            activation='softmax2d',
             kernel_size=1,
             upsampling=4,
         )
