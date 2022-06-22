@@ -72,7 +72,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
                               torch.stack([anchors[0]] * imgs.shape[0], 0).detach(), regression.detach(),
                               classification.detach(),
                               regressBoxes, clipBoxes,
-                              0.001, 0.6)  # 0.5, 0.3
+                              opt.conf_thres, opt.iou_thres)  # 0.5, 0.3
 
             for i in range(annot.size(0)):
                 seen += 1
@@ -294,6 +294,10 @@ if __name__ == "__main__":
                     help='Whether to plot confusion matrix when valing')
     ap.add_argument('--num_gpus', type=int, default=1,
                     help='Number of GPUs to be used (0 to use CPU)')
+    ap.add_argument('--conf_thres', type=float, default=0.001,
+                    help='Confidence threshold in NMS')
+    ap.add_argument('--iou_thres', type=float, default=0.6,
+                    help='IoU threshold in NMS') 
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
