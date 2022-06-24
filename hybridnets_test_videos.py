@@ -11,6 +11,7 @@ from utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_o
 import os
 from torchvision import transforms
 import argparse
+from utils.constants import *
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
@@ -20,7 +21,7 @@ parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coeffici
 parser.add_argument('--source', type=str, default='demo/video', help='The demo video folder')
 parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
 parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
-parser.add_argument('--nms_thresh', type=restricted_float, default='0.25')
+parser.add_argument('--conf_thresh', type=restricted_float, default='0.25')
 parser.add_argument('--iou_thresh', type=restricted_float, default='0.3')
 parser.add_argument('--cuda', type=boolean_string, default=True)
 parser.add_argument('--float16', type=boolean_string, default=True, help="Use float16 for faster inference")
@@ -47,7 +48,7 @@ shapes = []
 anchors_ratios = params.anchors_ratios
 anchors_scales = params.anchors_scales
 
-threshold = args.nms_thresh
+threshold = args.conf_thresh
 iou_threshold = args.iou_thresh
 
 use_cuda = args.cuda
@@ -70,13 +71,26 @@ transform = transforms.Compose([
     normalize,
 ])
 # print(x.shape)
-
+weight = torch.load(weight, map_location='cuda' if use_cuda else 'cpu')
+weight_last_layer_seg = weight.get('model', weight)['segmentation_head.0.weight']
+if weight_last_layer_seg.size(0) == 1:
+    seg_mode = BINARY_MODE
+else:
+    if params.seg_multilabel:
+        seg_mode = MULTILABEL_MODE
+        print("Sorry, we do not support multilabel video inference yet.")
+        print("In image inference, we can give each class their own image.")
+        print("But a video for each class is meaningless.")
+        print("https://github.com/datvuthanh/HybridNets/issues/20")
+        exit(0)
+    else:
+        seg_mode = MULTICLASS_MODE
+print("DETECTED SEGMENTATION MODE FROM WEIGHT AND PROJECT FILE:", seg_mode)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
-                           scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone)
-try:
-    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
-except:
-    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu')['model'])
+                           scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone,
+                           seg_mode=seg_mode)
+model.load_state_dict(weight.get('model', weight))
+
 model.requires_grad_(False)
 model.eval()
 
@@ -121,18 +135,22 @@ for video_index, video_src in enumerate(video_srcs):
             features, regression, classification, anchors, seg = model(x)
 
             seg = seg[:, :, int(pad[1]):int(h+pad[1]), int(pad[0]):int(w+pad[0])]
-            _, da_seg_mask = torch.max(seg, 1)
-            da_seg_mask_ = da_seg_mask[0].squeeze().cpu().numpy().round()
-            da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=(w0, h0), interpolation=cv2.INTER_NEAREST)
-            color_area = np.zeros((da_seg_mask_.shape[0], da_seg_mask_.shape[1], 3), dtype=np.uint8)
-
+            # (1, C, W, H) -> (1, W, H)
+            if seg_mode == BINARY_MODE:
+                seg_mask = torch.where(seg >= 0.5, 1, 0)
+                seg_mask.squeeze_(1)
+            else:
+                _, seg_mask = torch.max(seg, 1)
+            # (1, W, H) -> (W, H)
+            seg_mask_ = seg_mask[0].squeeze().cpu().numpy()
+            seg_mask_ = cv2.resize(seg_mask_, dsize=(w0, h0), interpolation=cv2.INTER_NEAREST)
+            color_seg = np.zeros((seg_mask_.shape[0], seg_mask_.shape[1], 3), dtype=np.uint8)
             for index, seg_class in enumerate(params.seg_list):
-                color_area[da_seg_mask_ == index+1] = color_list_seg[seg_class]
-            color_seg = color_area[..., ::-1]
-
+                color_seg[seg_mask_ == index+1] = color_list_seg[seg_class]
+            color_seg = color_seg[..., ::-1]  # RGB -> BGR
             # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)
 
-            color_mask = np.mean(color_seg, 2)
+            color_mask = np.mean(color_seg, 2)  # (H, W, C) -> (H, W), check if any pixel is not background
             frame[color_mask != 0] = frame[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
             frame = frame.astype(np.uint8)
             # cv2.imwrite('seg_{}.jpg'.format(i), ori_img)

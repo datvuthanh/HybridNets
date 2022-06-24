@@ -11,10 +11,11 @@ from tqdm.autonotebook import tqdm
 import json
 import albumentations as A
 from collections import OrderedDict
+from utils.constants import *
 
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, use_mosaic=False):
+    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, use_mosaic=False, seg_mode=MULTICLASS_MODE):
         """
         initial all the characteristic
 
@@ -62,6 +63,7 @@ class BddDataset(Dataset):
         self.traffic_light_color = params.traffic_light_color
         self.use_mosaic = use_mosaic
         self.mosaic_border = [-1 * self.inputsize[1] // 2, -1 * self.inputsize[0] // 2]
+        self.seg_mode = seg_mode
         self.db = self._get_db()
 
     def _get_db(self):
@@ -341,7 +343,7 @@ class BddDataset(Dataset):
 
                 # Segmentation
                 for seg_class in seg_label:
-                    seg_label[seg_class] = np.filpud(seg_label[seg_class])
+                    seg_label[seg_class] = np.flipud(seg_label[seg_class])
                 
         else:
             img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
@@ -373,17 +375,54 @@ class BddDataset(Dataset):
         for seg_class in seg_label:
             _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 1, 255, cv2.THRESH_BINARY)
         
-        # special treatment for lane-line of bdd100k for our dataset
-        # since we increase lane-line from 2 to 8 pixels, we must take care of the overlap to other segmentation classes
-        # e.g.: a pixel belongs to both road and lane-line, then we must prefer lane, or metrics would be wrong
-        if 'lane' in seg_label:
+        if self.seg_mode == BINARY_MODE:
             for seg_class in seg_label:
-                if seg_class != 'lane': seg_label[seg_class] -= seg_label['lane']
+                # technically, the for-loop only goes once
+                segmentation = self.Tensor(seg_label[seg_class])
+            
+            # [1, H, W]
+            # road [0, 0, 0, 0]
+            #      [0, 1, 1, 0]
+            #      [0, 1, 1, 0]
+            #      [1, 1, 1, 1]
 
-        union = np.zeros(img.shape[:2], dtype=np.uint8)
-        for seg_class in seg_label:
-            union |= seg_label[seg_class]
-        background = 255 - union
+        elif self.seg_mode == MULTICLASS_MODE:
+            # special treatment for lane-line of bdd100k for our dataset
+            # since we increase lane-line from 2 to 8 pixels, we must take care of the overlap to other segmentation classes
+            # e.g.: a pixel belongs to both road and lane-line, then we must prefer lane, or metrics would be wrong
+            if 'lane' in seg_label:
+                for seg_class in seg_label:
+                    if seg_class != 'lane': seg_label[seg_class] -= seg_label['lane']
+
+            segmentation = np.zeros(img.shape[:2], dtype=np.uint8)
+            segmentation = self.Tensor(segmentation)
+            segmentation.squeeze_(0)
+            for seg_index, seg_class in enumerate(seg_label.values()):
+                segmentation[seg_class == 255] = seg_index + 1
+            
+            # [H, W]
+            # background = 0, road = 1, lane = 2
+            # [0, 0, 0, 0]
+            # [2, 1, 1, 2]
+            # [2, 1, 1, 2]
+            # [1, 1, 1, 1]
+
+        else:  # multi-label
+            union = np.zeros(img.shape[:2], dtype=np.uint8)
+            for seg_class in seg_label:
+                union |= seg_label[seg_class]
+            background = 255 - union
+
+            for seg_class in seg_label:
+                seg_label[seg_class] = self.Tensor(seg_label[seg_class])
+            background = self.Tensor(background)
+            segmentation = torch.cat([background, *seg_label.values()], dim=0)
+
+            # [C, H, W]
+            # background [1, 1, 1, 1] road [0, 0, 0, 0]   lane [0, 0, 0, 0]
+            #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
+            #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
+            #            [0, 0, 0, 0]      [1, 1, 1, 1]        [1, 0, 0, 1]
 
         # print(img.shape)
         # print(lane1.shape)
@@ -394,12 +433,6 @@ class BddDataset(Dataset):
         # cv2.imwrite('_background.jpg', background)
         # cv2.imwrite('{}-seg.jpg'.format(data['image'].split('/')[-1]),seg1)
 
-        for seg_class in seg_label:
-            seg_label[seg_class] = self.Tensor(seg_label[seg_class])
-        background = self.Tensor(background)
-        segmentation = torch.cat([background, *seg_label.values()], dim=0)
-        # print(segmentation.size())
-
         # for anno in labels_app:
         #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
         #   cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
@@ -407,7 +440,7 @@ class BddDataset(Dataset):
 
         img = self.transform(img)
 
-        return img, path, shapes, torch.from_numpy(labels_app), segmentation
+        return img, path, shapes, torch.from_numpy(labels_app), segmentation.long()
 
     def select_data(self, db):
         """
