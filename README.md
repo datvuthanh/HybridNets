@@ -189,17 +189,29 @@ Please check `python train.py --help` for cheat codes.
 
 Check [this issue](https://github.com/datvuthanh/HybridNets/issues/34) for mosaic discussion. Please, we need help.
 
-**IMPORTANT:** If you want to train on multiple gpus, use `train_ddp.py`. Tested on NVIDIA DGX with 8xA100 40GB.  
+**~~IMPORTANT~~ (deprecated):** If you want to train on multiple gpus, use `train_ddp.py`. Tested on NVIDIA DGX with 8xA100 40GB.  
 Why didn't we combine DDP into the already existing `train.py` script?
 1. Lots of if-else.
 2. Don't want to break functioning stuffs.
 3. Lazy. 
+
+**Update 24/06/2022:** `train_ddp.py` broke because we have a lot of things changed. Therefore, we decided to write a merged `train.py` with DDP support for easier maintainance. In the meantime, please clone [this commit](https://github.com/datvuthanh/HybridNets/tree/ecc835ca1f68b17c9d1deb926f9e7bbe8455ccee) with a working `train_ddp.py` script if you really have to.
 
 #### 3) Evaluate
 ```bash
 python val.py -w checkpoints/weight.pth
 ```
 Again, check `python val.py --help` for god mode.
+
+**Validation process got killed! What do I do?**
+=> This is because we use a default confidence threshold of 0.001 to compare with other networks. So when calculating metrics, it has to handle a large amount of bounding boxes, leading to out-of-memory, and finally exploding the program before the next epoch.
+
+That being said, there are multiple ways to circumvent this problem, choose the best that suit you:
+
+- Train on a high-RAM instance (RAM as in main memory, not VRAM in GPU). For your reference, we can only val the combined `car` class with 64GB RAM.
+- Train with `python train.py --cal_map False` to not calculate metrics when validating. This option will only print validation losses. When the losses seem to flatten and the weather is nice, rent a high-RAM instance to validate the best weight with `python val.py -w checkpoints/xxx_best.pth`. We actually did this to save on cost.
+- Reduce the confidence threshold with `python train.py --conf_thres 0.5` or `python val.py --conf_thres 0.5`, depending on your application and end goals. You don't have to get best recall unless you're either helping us by experimenting :smiling_face_with_three_hearts: or competing with us :angry:.
+
 
 ## Training Tips
 ### Anchors :anchor:
@@ -241,7 +253,7 @@ And because a picture is worth a thousand words, you can visualize your anchor b
 ### Training stages
 We experimented with training stages and found that this settings achieved the best results:
  
-1. `--freeze_seg True` ~ 100 epochs
+1. `--freeze_seg True` ~ 200 epochs
 2. `--freeze_backbone True --freeze_det True` ~ 50 epochs
 3. Train end-to-end ~ 50 epochs
 
