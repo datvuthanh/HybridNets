@@ -11,6 +11,7 @@ from utils.plot import STANDARD_COLORS, standard_to_bgr, get_index_label, plot_o
 import os
 from torchvision import transforms
 import argparse
+from utils.constants import *
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
@@ -20,7 +21,7 @@ parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coeffici
 parser.add_argument('--source', type=str, default='demo/image', help='The demo image folder')
 parser.add_argument('--output', type=str, default='demo_result', help='Output folder')
 parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
-parser.add_argument('--nms_thresh', type=restricted_float, default='0.25')
+parser.add_argument('--conf_thresh', type=restricted_float, default='0.25')
 parser.add_argument('--iou_thresh', type=restricted_float, default='0.3')
 parser.add_argument('--imshow', type=boolean_string, default=False, help="Show result onscreen (unusable on colab, jupyter...)")
 parser.add_argument('--imwrite', type=boolean_string, default=True, help="Write result to output folder")
@@ -28,6 +29,8 @@ parser.add_argument('--show_det', type=boolean_string, default=False, help="Outp
 parser.add_argument('--show_seg', type=boolean_string, default=False, help="Output segmentation result exclusively")
 parser.add_argument('--cuda', type=boolean_string, default=True)
 parser.add_argument('--float16', type=boolean_string, default=True, help="Use float16 for faster inference")
+parser.add_argument('--speed_test', type=boolean_string, default=False,
+                    help='Measure inference latency')
 args = parser.parse_args()
 
 params = Params(f'projects/{args.project}.yml')
@@ -52,7 +55,7 @@ det_only_imgs = []
 anchors_ratios = params.anchors_ratios
 anchors_scales = params.anchors_scales
 
-threshold = args.nms_thresh
+threshold = args.conf_thresh
 iou_threshold = args.iou_thresh
 imshow = args.imshow
 imwrite = args.imwrite
@@ -71,6 +74,7 @@ seg_list = params.seg_list
 color_list = standard_to_bgr(STANDARD_COLORS)
 ori_imgs = [cv2.imread(i, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION) for i in img_path]
 ori_imgs = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in ori_imgs]
+print(f"FOUND {len(ori_imgs)} IMAGES")
 # cv2.imwrite('ori.jpg', ori_imgs[0])
 # cv2.imwrite('normalized.jpg', normalized_imgs[0]*255)
 resized_shape = params.model['image_size']
@@ -103,12 +107,21 @@ else:
 
 x = x.to(torch.float16 if use_cuda and use_float16 else torch.float32)
 # print(x.shape)
+weight = torch.load(weight, map_location='cuda' if use_cuda else 'cpu')
+weight_last_layer_seg = weight.get('model', weight)['segmentation_head.0.weight']
+if weight_last_layer_seg.size(0) == 1:
+    seg_mode = BINARY_MODE
+else:
+    if params.seg_multilabel:
+        seg_mode = MULTILABEL_MODE
+    else:
+        seg_mode = MULTICLASS_MODE
+print("DETECTED SEGMENTATION MODE FROM WEIGHT AND PROJECT FILE:", seg_mode)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
-                           scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone)
-try:
-    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu'))
-except:
-    model.load_state_dict(torch.load(weight, map_location='cuda' if use_cuda else 'cpu')['model'])
+                           scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone,
+                           seg_mode=seg_mode)
+model.load_state_dict(weight.get('model', weight))
+
 model.requires_grad_(False)
 model.eval()
 
@@ -120,29 +133,46 @@ if use_cuda:
 with torch.no_grad():
     features, regression, classification, anchors, seg = model(x)
 
-    _, da_seg_mask = torch.max(seg, 1)
-    for i in range(da_seg_mask.size(0)):
+    # in case of MULTILABEL_MODE, each segmentation class gets their own inference image
+    seg_mask_list = []
+    # (B, C, W, H) -> (B, W, H)
+    if seg_mode == BINARY_MODE:
+        seg_mask = torch.where(seg >= 0.5, 1, 0)
+        seg_mask.squeeze_(1)
+        seg_mask_list.append(seg_mask)
+    elif seg_mode == MULTICLASS_MODE:
+        _, seg_mask = torch.max(seg, 1)
+        seg_mask_list.append(seg_mask)
+    else:
+        seg_mask_list = [torch.where(seg[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
+        # but remove background class from the list
+        seg_mask_list.pop(0)
+    # (B, W, H) -> (W, H)
+    for i in range(seg.size(0)):
         #   print(i)
-        da_seg_mask_ = da_seg_mask[i].squeeze().cpu().numpy().round()
-        pad_h = int(shapes[i][1][1][1])
-        pad_w = int(shapes[i][1][1][0])
-        da_seg_mask_ = da_seg_mask_[pad_h:da_seg_mask_.shape[0]-pad_h, pad_w:da_seg_mask_.shape[1]-pad_w]
-        da_seg_mask_ = cv2.resize(da_seg_mask_, dsize=shapes[i][0][::-1], interpolation=cv2.INTER_NEAREST)
-        color_area = np.zeros((da_seg_mask_.shape[0], da_seg_mask_.shape[1], 3), dtype=np.uint8)
-        for index, seg_class in enumerate(params.seg_list):
-                color_area[da_seg_mask_ == index+1] = color_list_seg[seg_class]
-        color_seg = color_area[..., ::-1]
-        # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)
+        for seg_class_index, seg_mask in enumerate(seg_mask_list):
+            seg_mask_ = seg_mask[i].squeeze().cpu().numpy()
+            pad_h = int(shapes[i][1][1][1])
+            pad_w = int(shapes[i][1][1][0])
+            seg_mask_ = seg_mask_[pad_h:seg_mask_.shape[0]-pad_h, pad_w:seg_mask_.shape[1]-pad_w]
+            seg_mask_ = cv2.resize(seg_mask_, dsize=shapes[i][0][::-1], interpolation=cv2.INTER_NEAREST)
+            color_seg = np.zeros((seg_mask_.shape[0], seg_mask_.shape[1], 3), dtype=np.uint8)
+            for index, seg_class in enumerate(params.seg_list):
+                    color_seg[seg_mask_ == index+1] = color_list_seg[seg_class]
+            color_seg = color_seg[..., ::-1]  # RGB -> BGR
+            # cv2.imwrite('seg_only_{}.jpg'.format(i), color_seg)
 
-        color_mask = np.mean(color_seg, 2)
-        # prepare to show det on 2 different imgs
-        # (with and without seg) -> (full and det_only)
-        det_only_imgs.append(ori_imgs[i].copy())
-        seg_img = ori_imgs[i]
-        seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
-        seg_img = seg_img.astype(np.uint8)
-        if show_seg:
-          cv2.imwrite(f'{output}/{i}_seg.jpg', cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
+            color_mask = np.mean(color_seg, 2)  # (H, W, C) -> (H, W), check if any pixel is not background
+            # prepare to show det on 2 different imgs
+            # (with and without seg) -> (full and det_only)
+            det_only_imgs.append(ori_imgs[i].copy())
+            seg_img = ori_imgs[i].copy() if seg_mode == MULTILABEL_MODE else ori_imgs[i]  # do not work on original images if MULTILABEL_MODE
+            seg_img[color_mask != 0] = seg_img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
+            seg_img = seg_img.astype(np.uint8)
+            seg_filename = f'{output}/{i}_{params.seg_list[seg_class_index]}_seg.jpg' if seg_mode == MULTILABEL_MODE else \
+                           f'{output}/{i}_seg.jpg'
+            if show_seg or seg_mode == MULTILABEL_MODE:
+                cv2.imwrite(seg_filename, cv2.cvtColor(seg_img, cv2.COLOR_RGB2BGR))
 
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
@@ -173,7 +203,8 @@ with torch.no_grad():
         if imwrite:
             cv2.imwrite(f'{output}/{i}.jpg', cv2.cvtColor(ori_imgs[i], cv2.COLOR_RGB2BGR))
 
-# exit()
+if not args.speed_test:
+    exit(0)
 print('running speed test...')
 with torch.no_grad():
     print('test1: model inferring and postprocessing')

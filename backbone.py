@@ -7,13 +7,15 @@ from utils.utils import Anchors
 from hybridnets.model import SegmentationHead
 
 from encoders import get_encoder
+from utils.constants import *
 
 class HybridNetsBackbone(nn.Module):
-    def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, **kwargs):
+    def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, seg_mode=MULTICLASS_MODE, **kwargs):
         super(HybridNetsBackbone, self).__init__()
         self.compound_coef = compound_coef
 
         self.seg_classes = seg_classes
+        self.seg_mode = seg_mode
 
         self.backbone_compound_coef = [0, 1, 2, 3, 4, 5, 6, 6, 7]
         self.fpn_num_filters = [64, 88, 112, 160, 224, 288, 384, 384, 384]
@@ -56,11 +58,10 @@ class HybridNetsBackbone(nn.Module):
         # self.decoder = DecoderModule()
         self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
 
-        # TODO: sigmoid for multi-label
         self.segmentation_head = SegmentationHead(
             in_channels=64,
-            out_channels=self.seg_classes+1,
-            activation='softmax2d',
+            out_channels=1 if self.seg_mode == BINARY_MODE else self.seg_classes+1,
+            activation='softmax2d' if self.seg_mode == MULTICLASS_MODE else 'sigmoid',
             kernel_size=1,
             upsampling=4,
         )

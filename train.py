@@ -17,6 +17,7 @@ from utils.utils import get_last_weights, init_weights, boolean_string, \
 from hybridnets.dataset import BddDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
+from utils.constants import *
 
 
 def get_args():
@@ -65,6 +66,10 @@ def get_args():
     parser.add_argument('--mosaic', type=boolean_string, default=False,
                         help='Use mosaic augmentation, '
                              'recommended when training object detection only.')
+    parser.add_argument('--conf_thres', type=float, default=0.001,
+                        help='Confidence threshold in NMS')
+    parser.add_argument('--iou_thres', type=float, default=0.6,
+                        help='IoU threshold in NMS')
 
     args = parser.parse_args()
     return args
@@ -85,6 +90,8 @@ def train(opt):
     os.makedirs(opt.log_path, exist_ok=True)
     os.makedirs(opt.saved_path, exist_ok=True)
 
+    seg_mode = MULTILABEL_MODE if params.seg_multilabel else MULTICLASS_MODE if len(params.seg_list) > 1 else BINARY_MODE
+
     train_dataset = BddDataset(
         params=params,
         is_train=True,
@@ -95,7 +102,8 @@ def train(opt):
                 mean=params.mean, std=params.std
             )
         ]),
-        use_mosaic=opt.mosaic
+        use_mosaic=opt.mosaic,
+        seg_mode=seg_mode
     )
 
     training_generator = DataLoaderX(
@@ -116,7 +124,8 @@ def train(opt):
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ])
+        ]),
+        seg_mode=seg_mode
     )
 
     val_generator = DataLoaderX(
@@ -133,7 +142,8 @@ def train(opt):
 
     model = HybridNetsBackbone(num_classes=len(params.obj_list), compound_coef=opt.compound_coef,
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list), backbone_name=opt.backbone)
+                               seg_classes=len(params.seg_list), backbone_name=opt.backbone,
+                               seg_mode=seg_mode)
 
     # load last weights
     ckpt = {}
@@ -239,7 +249,7 @@ def train(opt):
                         # if only one gpu, just send it to cuda:0
                         imgs = imgs.cuda()
                         annot = annot.cuda()
-                        seg_annot = seg_annot.cuda().long()
+                        seg_annot = seg_annot.cuda()
 
                     optimizer.zero_grad()
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
@@ -286,7 +296,7 @@ def train(opt):
             scheduler.step(np.mean(epoch_loss))
 
             if epoch % opt.val_interval == 0:
-                best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, is_training=True,
+                best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
                                                           optimizer=optimizer, writer=writer, epoch=epoch, step=step, 
                                                           best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
     except KeyboardInterrupt:

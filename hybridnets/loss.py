@@ -8,10 +8,7 @@ from utils.utils import postprocess, BBoxTransform, ClipBoxes
 from typing import Optional, List
 from functools import partial
 from utils.plot import display
-
-BINARY_MODE: str = "binary"
-MULTICLASS_MODE: str = "multiclass"
-MULTILABEL_MODE: str = "multilabel"
+from utils.constants import *
 
 def calc_iou(a, b):
     # a(anchor) [boxes, (y1, x1, y2, x2)]
@@ -248,9 +245,10 @@ def focal_loss_with_logits(
         https://github.com/open-mmlab/mmdetection/blob/master/mmdet/core/loss/losses.py
     """
     target = target.type(output.type())
-    # print(output.size(), target.size())
 
-    logpt = F.binary_cross_entropy_with_logits(output, target, reduction="none")
+    # https://github.com/qubvel/segmentation_models.pytorch/issues/612
+    logpt = F.binary_cross_entropy(output, target, reduction="none")
+    # logpt = F.binary_cross_entropy_with_logits(output, target, reduction="none")
     pt = torch.exp(-logpt)
 
     # compute the loss
@@ -347,9 +345,7 @@ class FocalLossSeg(_Loss):
                 not_ignored = y_true != self.ignore_index
 
             for cls in range(num_classes):
-                # cls_y_true = (y_true == cls).long()
-
-                cls_y_true = y_true[:, cls, ...]
+                cls_y_true = (y_true == cls).long()
                 cls_y_pred = y_pred[:, cls, ...]
 
                 if self.ignore_index is not None:
@@ -449,14 +445,10 @@ class DiceLoss(_Loss):
             # Apply activations to get [0..1] class probabilities
             # Using Log-Exp as this gives more numerically stable result and does not cause vanishing gradient on
             # extreme values 0 and 1
-            # print(y_pred)
-
             if self.mode == MULTICLASS_MODE:
                 y_pred = y_pred.log_softmax(dim=1).exp()
             else:
                 y_pred = F.logsigmoid(y_pred).exp()
-
-            # print("AFTER: ", y_pred)
 
         bs = y_true.size(0)
         num_classes = y_pred.size(1)
@@ -472,24 +464,18 @@ class DiceLoss(_Loss):
                 y_true = y_true * mask
 
         if self.mode == MULTICLASS_MODE:
-
-            y_true = y_true.view(bs, num_classes, -1)
+            y_true = y_true.view(bs, -1)
             y_pred = y_pred.view(bs, num_classes, -1)
 
-            # print("NUM CLASSES:", num_classes, y_true.size())
-
-            # if self.ignore_index is not None:
-            #     mask = y_true != self.ignore_index
-            #     y_pred = y_pred * mask.unsqueeze(1)
-            #
-            #     y_true = F.one_hot((y_true * mask).to(torch.long), num_classes)  # N,H*W -> N,H*W, C
-            #     y_true = y_true.permute(0, 2, 1) * mask.unsqueeze(1)  # H, C, H*W
-            # else:
-            #     y_true = F.one_hot(y_true, num_classes)  # N,H*W -> N,H*W, C
-            #     y_true = y_true.permute(0, 2, 1)  # N, C, H*W
-            #
-            #     print("HERE", y_true.size())
-            #     print(y_pred.size())
+            if self.ignore_index is not None:
+                mask = y_true != self.ignore_index
+                y_pred = y_pred * mask.unsqueeze(1)
+            
+                y_true = F.one_hot((y_true * mask).to(torch.long), num_classes)  # N,H*W -> N,H*W, C
+                y_true = y_true.permute(0, 2, 1) * mask.unsqueeze(1)  # H, C, H*W
+            else:
+                y_true = F.one_hot(y_true, num_classes)  # N,H*W -> N,H*W, C
+                y_true = y_true.permute(0, 2, 1)  # N, C, H*W
 
         if self.mode == MULTILABEL_MODE:
             y_true = y_true.view(bs, num_classes, -1)

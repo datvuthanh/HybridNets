@@ -14,10 +14,10 @@ def nms(dets, thresh):
 class ModelWithLoss(nn.Module):
     def __init__(self, model, debug=False):
         super().__init__()
-        self.criterion = FocalLoss()
-        self.seg_criterion1 = TverskyLoss(mode='multilabel', alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
-        self.seg_criterion2 = FocalLossSeg(mode='multilabel', alpha=0.25)
         self.model = model
+        self.criterion = FocalLoss()
+        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
+        self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode, alpha=0.25)
         self.debug = debug
 
     def forward(self, imgs, annotations, seg_annot, obj_list=None):
@@ -792,7 +792,7 @@ class Activation(nn.Module):
     def __init__(self, name, **params):
 
         super().__init__()
-
+        self._name = name
         if name is None or name == 'identity':
             self.activation = nn.Identity(**params)
         elif name == 'sigmoid':

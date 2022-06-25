@@ -11,10 +11,11 @@ from backbone import HybridNetsBackbone
 from hybridnets.dataset import BddDataset
 from torchvision import transforms
 from hybridnets.model import ModelWithLoss
+from utils.constants import *
 
 
 @torch.no_grad()
-def val(model, val_generator, params, opt, is_training, **kwargs):
+def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     model.eval()
 
     optimizer = kwargs.get('optimizer', None)
@@ -33,6 +34,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     num_thresholds = iou_thresholds.numel()
     names = {i: v for i, v in enumerate(params.obj_list)}
     nc = len(names)
+    ncs = 1 if seg_mode == BINARY_MODE else len(params.seg_list) + 1
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
     s_seg = ' ' * (15 + 11 * 8)
@@ -42,8 +44,8 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
             s_seg += '%-33s' % params.seg_list[i]
             s += ('%-11s' * 3) % ('mIoU', 'IoU', 'Acc')
     p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    iou_ls = [[] for _ in range(len(params.seg_list)+1)]
-    acc_ls = [[] for _ in range(len(params.seg_list)+1)]
+    iou_ls = [[] for _ in range(ncs)]
+    acc_ls = [[] for _ in range(ncs)]
     regressBoxes = BBoxTransform()
     clipBoxes = ClipBoxes()
 
@@ -132,31 +134,21 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
                 # anh[seg_0 == 1] = (0,255,0)
                 # anh[seg_0 == 2] = (0,0,255)
                 # anh = np.uint8(anh)
-                # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)
+                # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)         
+            if seg_mode == MULTICLASS_MODE:
+                _, segmentation = torch.max(segmentation, 1)  # (bs, C, H, W) -> (bs, H, W)
 
-            # Convert segmentation tensor --> 3 binary 0 1
-            # batch_size, num_classes, height, width
-            _, segmentation = torch.max(segmentation, 1)
-            # _, seg_annot = torch.max(seg_annot, 1)
-            # TODO: this is assuming all input images are of the same size, which I might fix if an issue is raised lol
-            seg = torch.zeros((seg_annot.size(0), len(params.seg_list)+1, imgs[0].size(1), imgs[0].size(2)), dtype=torch.int32)
-            # seg[:, 0, ...][segmentation == 0] = 1
-            # seg[:, 1, ...][segmentation == 1] = 1
-            # seg[:, 2, ...][segmentation == 2] = 1
-
-            # TODO: parallelize this
-            for i in range(len(params.seg_list)+1):
-                seg[:, i, ...][segmentation == i] = 1
-            
-
-            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
-                                                                   mode='multilabel', threshold=None)
+            tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=seg_mode,
+                                                                   threshold=0.5 if seg_mode != MULTICLASS_MODE else None,
+                                                                   num_classes=ncs if seg_mode == MULTICLASS_MODE else None)
+            # tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
+            #                                                        mode='multilabel', threshold=None)
 
             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
             #         print(iou)
             acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
 
-            for i in range(len(params.seg_list) + 1):
+            for i in range(ncs):
                 iou_ls[i].append(iou.T[i].detach().cpu().numpy())
                 acc_ls[i].append(acc.T[i].detach().cpu().numpy())
 
@@ -173,7 +165,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
     seg_loss = np.mean(loss_segmentation_ls)
     loss = cls_loss + reg_loss + seg_loss
 
-    for i in range(len(params.seg_list) + 1):
+    for i in range(ncs):
         iou_ls[i] = np.concatenate(iou_ls[i])
         acc_ls[i] = np.concatenate(acc_ls[i])
 
@@ -202,7 +194,7 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
         # iou_second_decoder = (iou_ls[0] + iou_ls[2]) / 2
         # iou_second_decoder = np.mean(iou_second_decoder)
 
-        for i in range(len(params.seg_list) + 1):
+        for i in range(ncs):
             iou_ls[i] = np.mean(iou_ls[i])
             acc_ls[i] = np.mean(acc_ls[i])
 
@@ -231,7 +223,8 @@ def val(model, val_generator, params, opt, is_training, **kwargs):
         print(s)
         pf = ('%-15s' + '%-11i' * 2 + '%-11.3g' * 6) % ('all', seen, nt.sum(), mp, mr, map50, map, iou_score, acc_score)
         for i in range(len(params.seg_list)):
-            pf += ('%-11.3g' * 3) % (miou_ls[i], iou_ls[i+1], acc_ls[i+1])
+            tmp = i+1 if seg_mode != BINARY_MODE else i
+            pf += ('%-11.3g' * 3) % (miou_ls[i], iou_ls[tmp], acc_ls[tmp])
         print(pf)
 
         # Print results per class
@@ -297,7 +290,7 @@ if __name__ == "__main__":
     ap.add_argument('--conf_thres', type=float, default=0.001,
                     help='Confidence threshold in NMS')
     ap.add_argument('--iou_thres', type=float, default=0.6,
-                    help='IoU threshold in NMS') 
+                    help='IoU threshold in NMS')
     args = ap.parse_args()
 
     compound_coef = args.compound_coef
@@ -306,6 +299,7 @@ if __name__ == "__main__":
 
     params = Params(f'projects/{project_name}.yml')
     obj_list = params.obj_list
+    seg_mode = MULTILABEL_MODE if params.seg_multilabel else MULTICLASS_MODE if len(params.seg_list) > 1 else BINARY_MODE
 
     valid_dataset = BddDataset(
         params=params,
@@ -316,7 +310,8 @@ if __name__ == "__main__":
             transforms.Normalize(
                 mean=params.mean, std=params.std
             )
-        ])
+        ]),
+        seg_mode=seg_mode
     )
 
     val_generator = DataLoaderX(
@@ -330,7 +325,8 @@ if __name__ == "__main__":
 
     model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(params.obj_list),
                                ratios=eval(params.anchors_ratios), scales=eval(params.anchors_scales),
-                               seg_classes=len(params.seg_list), backbone_name=args.backbone)
+                               seg_classes=len(params.seg_list), backbone_name=args.backbone,
+                               seg_mode=seg_mode)
     
     try:
         model.load_state_dict(torch.load(weights_path))
@@ -342,4 +338,4 @@ if __name__ == "__main__":
     if args.num_gpus > 0:
         model.cuda()
 
-    val(model, val_generator, params, args, is_training=False)
+    val(model, val_generator, params, args, seg_mode, is_training=False)
