@@ -40,7 +40,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     s_seg = ' ' * (15 + 11 * 8)
     s = ('%-15s' + '%-11s' * 8) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95', 'mIoU', 'mAcc')
     for i in range(len(params.seg_list)):
-            # s_seg += '{:^33s}'.format(params.seg_list[i])
             s_seg += '%-33s' % params.seg_list[i]
             s += ('%-11s' * 3) % ('mIoU', 'IoU', 'Acc')
     p, r, f1, mp, mr, map50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
@@ -141,9 +140,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=seg_mode,
                                                                    threshold=0.5 if seg_mode != MULTICLASS_MODE else None,
                                                                    num_classes=ncs if seg_mode == MULTICLASS_MODE else None)
-            # tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(seg.cuda(), seg_annot.long().cuda(),
-            #                                                        mode='multilabel', threshold=None)
-
             iou = smp_metrics.iou_score(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
             #         print(iou)
             acc = smp_metrics.balanced_accuracy(tp_seg, fp_seg, fn_seg, tn_seg, reduction='none')
@@ -165,10 +161,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     seg_loss = np.mean(loss_segmentation_ls)
     loss = cls_loss + reg_loss + seg_loss
 
-    for i in range(ncs):
-        iou_ls[i] = np.concatenate(iou_ls[i])
-        acc_ls[i] = np.concatenate(acc_ls[i])
-
     print(
         'Val. Epoch: {}/{}. Classification loss: {:1.5f}. Regression loss: {:1.5f}. Segmentation loss: {:1.5f}. Total loss: {:1.5f}'.format(
             epoch, opt.num_epochs if is_training else 0, cls_loss, reg_loss, seg_loss, loss))
@@ -179,6 +171,9 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
         writer.add_scalars('Segmentation_loss', {'val': seg_loss}, step)
 
     if opt.cal_map:
+        for i in range(ncs):
+            iou_ls[i] = np.concatenate(iou_ls[i])
+            acc_ls[i] = np.concatenate(acc_ls[i])
         # print(len(iou_ls[0]))
         iou_score = np.mean(iou_ls)
         # print(iou_score)
@@ -187,12 +182,6 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
         miou_ls = []
         for i in range(len(params.seg_list)):
             miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i]) / 2))
-
-        # iou_first_decoder = (iou_ls[0] + iou_ls[1]) / 2
-        # iou_first_decoder = np.mean(iou_first_decoder)
-
-        # iou_second_decoder = (iou_ls[0] + iou_ls[2]) / 2
-        # iou_second_decoder = np.mean(iou_second_decoder)
 
         for i in range(ncs):
             iou_ls[i] = np.mean(iou_ls[i])
