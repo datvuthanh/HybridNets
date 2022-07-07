@@ -244,9 +244,9 @@ def train(opt):
                     cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
                                                                                                             seg_annot,
                                                                                                             obj_list=params.obj_list)
-                    cls_loss = cls_loss.mean() #if not opt.freeze_det else torch.Tensor(0)
-                    reg_loss = reg_loss.mean() #if not opt.freeze_det else torch.Tensor(0)
-                    seg_loss = seg_loss.mean() #if not opt.freeze_seg else torch.Tensor(0)
+                    cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0)
+                    reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0)
+                    seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0)
 
                     loss = cls_loss + reg_loss + seg_loss
                     if loss == 0 or not torch.isfinite(loss):
