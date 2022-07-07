@@ -36,21 +36,25 @@ dataset:
   # must be in correct order with seg_list
   - ./datasets/bdd_seg_gt
   - ./datasets/bdd_lane_gt
-  data_format: jpg
-  flip: true
-  hsv_h: 0.015
-  hsv_s: 0.7
-  hsv_v: 0.4
+  test_set: val
+  train_set: train
   org_img_size:
   - 720
   - 1280
+  fliplr: 0.5
+  flipud: 0.0
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
   rot_factor: 10
   scale_factor: 0.25
   shear: 0.0
-  test_set: val
-  train_set: train
   translate: 0.1
-  color_rgb: false
+  # on bdd100k dataset, the below augmentations look really stupid on segmentation, so use freeze_seg if possible (free to prove us otherwise)
+  # we only used mosaic with freeze_seg and no mixup
+  # IMPORTANT: as mixup makes segmentation multi-label inherently, just use freeze_seg if you're going for multi-class segmentation, please
+  mosaic: 0.0  # if set, recommended at 1.0 
+  mixup: 0.0  # if set, recommended at 0.1
 model:
   image_size:
   - 640

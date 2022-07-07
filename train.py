@@ -64,9 +64,6 @@ def get_args():
                         help='Whether to plot confusion matrix when valing')
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='Number of GPUs to be used (0 to use CPU)')
-    parser.add_argument('--mosaic', type=boolean_string, default=False,
-                        help='Use mosaic augmentation, '
-                             'recommended when training object detection only.')
     parser.add_argument('--conf_thres', type=float, default=0.001,
                         help='Confidence threshold in NMS')
     parser.add_argument('--iou_thres', type=float, default=0.6,
@@ -103,7 +100,6 @@ def train(opt):
                 mean=params.mean, std=params.std
             )
         ]),
-        use_mosaic=opt.mosaic,
         seg_mode=seg_mode,
         debug=opt.debug
     )

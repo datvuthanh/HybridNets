@@ -15,7 +15,7 @@ from utils.constants import *
 
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, use_mosaic=False, seg_mode=MULTICLASS_MODE, debug=False):
+    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, seg_mode=MULTICLASS_MODE, debug=False):
         """
         initial all the characteristic
 
@@ -63,23 +63,13 @@ class BddDataset(Dataset):
         self.obj_list = params.obj_list
         self.dataset = params.dataset
         self.traffic_light_color = params.traffic_light_color
-        self.use_mosaic = use_mosaic
         self.mosaic_border = [-1 * self.inputsize[1] // 2, -1 * self.inputsize[0] // 2]
         self.seg_mode = seg_mode
         self.db = self._get_db()
 
     def _get_db(self):
         """
-        get database from the annotation file
-
-        Inputs:
-
-        Returns:
-        gt_db: (list)database   [a,b,c,...]
-                a: (dictionary){'image':, 'information':, ......}
-        image: image path
-        mask: path of the segmetation label
-        label: [cls_id, center_x//256, center_y//256, w//256, h//256] 256=IMAGE_SIZE
+        TODO: add docs
         """
         print('building database...')
         gt_db = []
@@ -189,6 +179,9 @@ class BddDataset(Dataset):
 #           x1,y1,x2,y2 = [int(x) for x in anno[1:5]]
 #           img_clone = cv2.rectangle(img_clone, (x1,y1), (x2,y2), (255,0,0), 1)
 #         cv2.imwrite("label-{}.jpg".format(index), img_clone)
+
+        for seg_class in seg_label:
+            _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 1, 255, cv2.THRESH_BINARY)
     
         return img, labels, seg_label, (h0, w0), (h,w), data['image']
 
@@ -210,6 +203,9 @@ class BddDataset(Dataset):
             # place img in img4
             if i == 0:  # top left
                 img4 = np.full((h_mosaic * 2, w_mosaic * 2, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
+                seg4 = OrderedDict()
+                for seg_class in seg_label:
+                    seg4[seg_class] = np.full((h_mosaic * 2, w_mosaic * 2), 0, dtype=np.uint8)  # base image with 4 tiles
                 x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
                 x1b, y1b, x2b, y2b = w - (x2a - x1a), h - (y2a - y1a), w, h  # xmin, ymin, xmax, ymax (small image)
             elif i == 1:  # top right
@@ -223,6 +219,8 @@ class BddDataset(Dataset):
                 x1b, y1b, x2b, y2b = 0, 0, min(w, x2a - x1a), min(y2a - y1a, h)
 
             img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
+            for seg_class in seg_label:
+                seg4[seg_class][y1a:y2a, x1a:x2a] = seg_label[seg_class][y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
             padw = x1a - x1b
             padh = y1a - y1b
             
@@ -246,35 +244,28 @@ class BddDataset(Dataset):
         labels4 = labels4[i]
         labels4[:] = new[i] 
 
-        return img4, labels4, seg_label, (h0, w0), (h, w), path
+        # cv2.imwrite('test_mosaic.jpg', img4)
+        # for seg_class in seg4:
+        #     cv2.imwrite(f'test_seg_mosaic_{seg_class}.jpg', seg4[seg_class])
+        return img4, labels4, seg4, (h0, w0), (h, w), path
 
     def __getitem__(self, idx):
         """
-        Get input and groud-truth from database & add data augmentation on input
-
-        Inputs:
-        -idx: the index of image in self.db(database)(list)
-        self.db(list) [a,b,c,...]
-        a: (dictionary){'image':, 'information':}
-
-        Returns:
-        -image: transformed image, first passed the data augmentation in __getitem__ function(type:numpy), then apply self.transform
-        -target: ground truth(det_gt,seg_gt)
-
-        function maybe useful
-        cv2.imread
-        cv2.cvtColor(data, cv2.COLOR_BGR2RGB)
-        cv2.warpAffine
+        TODO: add docs
         """
+        mosaic_this = False
         if self.is_train:
-            if self.use_mosaic:
-            # TODO: this doubles training time with inherent stuttering in tqdm, prob cpu or io bottleneck, does prefetch_generator work with ddp? (no improvement)
-            # TODO: updated, mosaic is inherently slow, maybe cache the images in RAM? maybe it was IO bottleneck of reading 4 images everytime? time it
+            if random.random() < self.dataset['mosaic']:
+                mosaic_this = True
+                # TODO: this doubles training time with inherent stuttering in tqdm, prob cpu or io bottleneck, does prefetch_generator work with ddp? (no improvement)
+                # TODO: updated, mosaic is inherently slow, maybe cache the images in RAM? maybe it was IO bottleneck of reading 4 images everytime? time it
                 img, labels, seg_label, (h0, w0), (h, w), path = self.load_mosaic(idx)
+
                 # mixup is double mosaic, really slow
-                if random.random() < 0.2:
+                if random.random() < self.dataset['mixup']:
                     img2, labels2, seg_label2, (_, _), (_, _), _ = self.load_mosaic(random.randint(0, len(self.db) - 1))
-                    img, labels = mixup(img, labels, img2, labels2)
+                    img, labels, seg_label = mixup(img, labels, seg_label, img2, labels2, seg_label2)
+
             # albumentations
             else:
                 img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
@@ -299,44 +290,35 @@ class BddDataset(Dataset):
                 translate=self.dataset['translate'],
                 scale=self.dataset['scale_factor'],
                 shear=self.dataset['shear'],
-                border=self.mosaic_border if self.use_mosaic else (0, 0)
+                border=self.mosaic_border if mosaic_this else (0, 0)
             )
             augment_hsv(img, hgain=self.dataset['hsv_h'], sgain=self.dataset['hsv_s'], vgain=self.dataset['hsv_v'])
 
             # random left-right flip
-            lr_flip = True
-            if lr_flip and random.random() < 0.5:
+            if random.random() < self.dataset['fliplr']:
                 img = img[:, ::-1, :]
 
                 if len(labels):
                     rows, cols, channels = img.shape
-
                     x1 = labels[:, 1].copy()
                     x2 = labels[:, 3].copy()
-
                     x_tmp = x1.copy()
-
                     labels[:, 1] = cols - x2
                     labels[:, 3] = cols - x_tmp
                 
                 # Segmentation
                 for seg_class in seg_label:
                     seg_label[seg_class] = np.fliplr(seg_label[seg_class])
-                    # lane_label = np.fliplr(lane_label)
 
             # random up-down flip
-            ud_flip = False
-            if ud_flip and random.random() < 0.5:
+            if random.random() < self.dataset['flipud']:
                 img = np.flipud(img)
 
                 if len(labels):
                     rows, cols, channels = img.shape
-
                     y1 = labels[:, 2].copy()
                     y2 = labels[:, 4].copy()
-
                     y_tmp = y1.copy()
-
                     labels[:, 2] = rows - y2
                     labels[:, 4] = rows - y_tmp
 
@@ -371,8 +353,19 @@ class BddDataset(Dataset):
 
         img = np.ascontiguousarray(img)
 
-        for seg_class in seg_label:
-            _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 1, 255, cv2.THRESH_BINARY)
+        # print(img.shape)
+        # img_copy = img.copy()
+        # img_copy[seg_label['road'] == 255] = (0, 255, 0)
+        # cv2.imwrite('_copy.jpg', img_copy)
+        # cv2.imwrite('_seg_road.jpg', seg_label['road'])
+        # cv2.imwrite('_seg_lane.jpg', seg_label['lane'])
+        # cv2.imwrite('_background.jpg', background)
+
+        # for anno in labels_app:
+        #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
+        #   cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
+        # cv2.imwrite('_box.jpg', img_copy)
+        # exit()
         
         if self.seg_mode == BINARY_MODE:
             for seg_class in seg_label:
@@ -422,20 +415,6 @@ class BddDataset(Dataset):
             #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
             #            [0, 0, 0, 0]      [0, 1, 1, 0]        [1, 0, 0, 1]
             #            [0, 0, 0, 0]      [1, 1, 1, 1]        [1, 0, 0, 1]
-
-        # print(img.shape)
-        # print(lane1.shape)
-        # img_copy = img.copy()
-        # img_copy[seg_label['road'] == 255] = (0, 255, 0)
-        # cv2.imwrite('_copy.jpg', img_copy)
-        # cv2.imwrite('_seg.jpg', seg_label['road'])
-        # cv2.imwrite('_background.jpg', background)
-        # cv2.imwrite('{}-seg.jpg'.format(data['image'].split('/')[-1]),seg1)
-
-        # for anno in labels_app:
-        #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
-        #   cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
-        # cv2.imwrite('_box.jpg', img_copy)
 
         img = self.transform(img)
 
