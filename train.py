@@ -54,7 +54,8 @@ def get_args():
     parser.add_argument('--saved_path', type=str, default='checkpoints/')
     parser.add_argument('--debug', type=boolean_string, default=False,
                         help='Whether visualize the predicted boxes of training, '
-                             'the output images will be in test/')
+                             'the output images will be in test/, '
+                             'and also only use first 500 images.')
     parser.add_argument('--cal_map', type=boolean_string, default=True,
                         help='Calculate mAP in validation')
     parser.add_argument('-v', '--verbose', type=boolean_string, default=True,
@@ -103,7 +104,8 @@ def train(opt):
             )
         ]),
         use_mosaic=opt.mosaic,
-        seg_mode=seg_mode
+        seg_mode=seg_mode,
+        debug=opt.debug
     )
 
     training_generator = DataLoaderX(
@@ -125,7 +127,8 @@ def train(opt):
                 mean=params.mean, std=params.std
             )
         ]),
-        seg_mode=seg_mode
+        seg_mode=seg_mode,
+        debug=opt.debug
     )
 
     val_generator = DataLoaderX(
@@ -172,33 +175,19 @@ def train(opt):
     print('[Info] Successfully!!!')
 
     if opt.freeze_backbone:
-        def freeze_backbone(m):
-            classname = m.__class__.__name__
-            if classname in ['EfficientNetEncoder', 'BiFPN']:  # replace backbone classname when using another backbone
-                print("[Info] freezing {}".format(classname))
-                for param in m.parameters():
-                    param.requires_grad = False
-        model.apply(freeze_backbone)
+        model.encoder.requires_grad_(False)
+        model.bifpn.requires_grad_(False)
         print('[Info] freezed backbone')
 
     if opt.freeze_det:
-        def freeze_det(m):
-            classname = m.__class__.__name__
-            if classname in ['Regressor', 'Classifier', 'Anchors']:
-                print("[Info] freezing {}".format(classname))
-                for param in m.parameters():
-                    param.requires_grad = False
-        model.apply(freeze_det)
+        model.regressor.requires_grad_(False)
+        model.classifier.requires_grad_(False)
+        model.anchors.requires_grad_(False)
         print('[Info] freezed detection head')
 
     if opt.freeze_seg:
-        def freeze_seg(m):
-            classname = m.__class__.__name__
-            if classname in ['BiFPNDecoder', 'SegmentationHead']:
-                print("[Info] freezing {}".format(classname))
-                for param in m.parameters():
-                    param.requires_grad = False
-        model.apply(freeze_seg)
+        model.bifpndecoder.requires_grad_(False)
+        model.segmentation_head.requires_grad_(False)
         print('[Info] freezed segmentation head')
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')

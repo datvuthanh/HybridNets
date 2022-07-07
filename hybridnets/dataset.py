@@ -15,7 +15,7 @@ from utils.constants import *
 
 
 class BddDataset(Dataset):
-    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, use_mosaic=False, seg_mode=MULTICLASS_MODE):
+    def __init__(self, params, is_train, inputsize=[640, 384], transform=None, use_mosaic=False, seg_mode=MULTICLASS_MODE, debug=False):
         """
         initial all the characteristic
 
@@ -42,6 +42,8 @@ class BddDataset(Dataset):
         self.img_root = img_root / indicator
         self.label_root = label_root / indicator
         self.label_list = list(self.label_root.iterdir())
+        if debug:
+            self.label_list = self.label_list[:50]
         self.seg_root = []
         for root in seg_root:
             self.seg_root.append(Path(root) / indicator)
@@ -266,16 +268,13 @@ class BddDataset(Dataset):
         """
         if self.is_train:
             if self.use_mosaic:
-            # TODO: this doubles training time with inherent stuttering in tqdm, prob cpu or io bottleneck, does prefetch_generator work with ddp?
+            # TODO: this doubles training time with inherent stuttering in tqdm, prob cpu or io bottleneck, does prefetch_generator work with ddp? (no improvement)
             # TODO: updated, mosaic is inherently slow, maybe cache the images in RAM? maybe it was IO bottleneck of reading 4 images everytime? time it
-            # honestly, mosaic is not for road and lane segmentation anyway
-            # you cant expect road and lane to be split up in 4 separate corners in an image, do you?
-            # only use mosaic with freeze_seg :)
                 img, labels, seg_label, (h0, w0), (h, w), path = self.load_mosaic(idx)
                 # mixup is double mosaic, really slow
-                # if random.random() < 0.2:
-                #     img2, labels2, _, (_, _), (_, _), _ = self.load_mosaic(random.randint(0, len(self.db) - 1))
-                #     img, labels = mixup(img, labels, img2, labels2)
+                if random.random() < 0.2:
+                    img2, labels2, seg_label2, (_, _), (_, _), _ = self.load_mosaic(random.randint(0, len(self.db) - 1))
+                    img, labels = mixup(img, labels, img2, labels2)
             # albumentations
             else:
                 img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
