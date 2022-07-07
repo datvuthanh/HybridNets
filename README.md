@@ -91,6 +91,7 @@ HybridNets
 │       bdd100k.yml               # Project configuration
 │
 └───utils
+    |   constants.py
     │   plot.py                   # Draw bounding box
     │   smp_metrics.py            # https://github.com/qubvel/segmentation_models.pytorch/blob/master/segmentation_models_pytorch/metrics/functional.py
     │   utils.py                  # Various helper functions (preprocess, postprocess, eval...)
@@ -143,7 +144,7 @@ Update your dataset paths in `projects/your_project_name.yml`.
 For BDD100K: [imgs](https://bdd-data.berkeley.edu/), [det_annot](https://drive.google.com/file/d/1d5osZ83rLwda7mfT3zdgljDiQO3f9B5M/view), [da_seg_annot](https://drive.google.com/file/d/1yNYLtZ5GVscx7RzpOd8hS7Mh7Rs6l3Z3/view), [ll_seg_annot](https://drive.google.com/file/d/1BPsyAjikEM9fqsVNMIygvdVVPrmK1ot-/view)
 
 ### Training
-#### 1) Edit or create a new project configuration, using bdd100k.yml as a template
+#### 1) Edit or create a new project configuration, using bdd100k.yml as a template. Augmentation params are here.
 ```python
 # mean and std of dataset in RGB order
 mean: [0.485, 0.456, 0.406]
@@ -161,13 +162,20 @@ obj_combine: ['car', 'bus', 'truck', 'train']  # if single class, combine these 
 
 seg_list: ['road',
           'lane']
+seg_multilabel: false  # a pixel can belong to multiple labels (i.e. lane line + underlying road)
 
 dataset:
-  color_rgb: false
   dataroot: path/to/imgs
   labelroot: path/to/det_annot
-  laneroot: path/to/ll_seg_annot
-  maskroot: path/to/da_seg_annot
+  segroot:
+  # must be in correct order with seg_list
+  - path/to/da_seg_annot
+  - path/to/ll_seg_annot
+  fliplr: 0.5
+  flipud: 0.0
+  hsv_h: 0.015
+  hsv_s: 0.7
+  hsv_v: 0.4
 ...
 ```
 
@@ -183,11 +191,8 @@ python train.py -p bdd100k        # your_project_name
                 --lr 1e-5         # learning rate
                 --optim adamw     # adamw | sgd
                 --num_epochs 200
-                --mosaic False
 ```
 Please check `python train.py --help` for cheat codes.
-
-Check [this issue](https://github.com/datvuthanh/HybridNets/issues/34) for mosaic discussion. Please, we need help.
 
 **~~IMPORTANT~~ (deprecated):** If you want to train on multiple gpus, use `train_ddp.py`. Tested on NVIDIA DGX with 8xA100 40GB.  
 Why didn't we combine DDP into the already existing `train.py` script?
