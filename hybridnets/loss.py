@@ -247,8 +247,8 @@ def focal_loss_with_logits(
     target = target.type(output.type())
 
     # https://github.com/qubvel/segmentation_models.pytorch/issues/612
-    logpt = F.binary_cross_entropy(output, target, reduction="none")
-    # logpt = F.binary_cross_entropy_with_logits(output, target, reduction="none")
+    # logpt = F.binary_cross_entropy(output, target, reduction="none")
+    logpt = F.binary_cross_entropy_with_logits(output, target, reduction="none")
     pt = torch.exp(-logpt)
 
     # compute the loss
@@ -337,6 +337,8 @@ class FocalLossSeg(_Loss):
             loss = self.focal_loss_fn(y_pred, y_true)
 
         elif self.mode == MULTICLASS_MODE:
+            # print(y_true.shape)
+            # print(y_pred.shape)
             num_classes = y_pred.size(1)
             loss = 0
 
@@ -347,6 +349,9 @@ class FocalLossSeg(_Loss):
             for cls in range(num_classes):
                 cls_y_true = (y_true == cls).long()
                 cls_y_pred = y_pred[:, cls, ...]
+                # print(cls_y_true.shape)
+                # print(cls_y_pred.shape)
+                # exit()
 
                 if self.ignore_index is not None:
                     cls_y_true = cls_y_true[not_ignored]

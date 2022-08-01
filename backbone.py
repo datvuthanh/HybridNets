@@ -61,7 +61,7 @@ class HybridNetsBackbone(nn.Module):
         self.segmentation_head = SegmentationHead(
             in_channels=64,
             out_channels=1 if self.seg_mode == BINARY_MODE else self.seg_classes+1,
-            activation='softmax2d' if self.seg_mode == MULTICLASS_MODE else 'sigmoid',
+            activation=None,
             kernel_size=1,
             upsampling=4,
         )

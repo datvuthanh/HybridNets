@@ -16,7 +16,7 @@ class ModelWithLoss(nn.Module):
         super().__init__()
         self.model = model
         self.criterion = FocalLoss()
-        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
+        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=0.75, from_logits=True)
         self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode, alpha=0.25)
         self.debug = debug
 

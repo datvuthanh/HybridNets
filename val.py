@@ -19,6 +19,7 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     model.eval()
 
     optimizer = kwargs.get('optimizer', None)
+    scaler = kwargs.get('scaler', None)
     writer = kwargs.get('writer', None)
     epoch = kwargs.get('epoch', 0)
     step = kwargs.get('step', 0)
@@ -135,7 +136,10 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
                 # anh = np.uint8(anh)
                 # cv2.imwrite('segmentation-{}.jpg'.format(filenames[i]),anh)         
             if seg_mode == MULTICLASS_MODE:
+                segmentation = segmentation.log_softmax(dim=1).exp()
                 _, segmentation = torch.max(segmentation, 1)  # (bs, C, H, W) -> (bs, H, W)
+            else:
+                y_pred = F.logsigmoid(y_pred).exp()
 
             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=seg_mode,
                                                                    threshold=0.5 if seg_mode != MULTICLASS_MODE else None,
@@ -181,7 +185,7 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
 
         miou_ls = []
         for i in range(len(params.seg_list)):
-            miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i]) / 2))
+            miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i+1]) / 2))
 
         for i in range(ncs):
             iou_ls[i] = np.mean(iou_ls[i])
@@ -237,8 +241,9 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
             ckpt = {'epoch': epoch,
                     'step': step,
                     'best_fitness': best_fitness,
-                    'model': model,
-                    'optimizer': optimizer}
+                    'model': model.model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'scaler': scaler.state_dict()}
             print("Saving checkpoint with best fitness", fi[0])
             save_checkpoint(ckpt, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}_best.pth')
     else:

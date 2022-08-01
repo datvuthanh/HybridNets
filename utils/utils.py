@@ -33,10 +33,8 @@ class Params:
 def save_checkpoint(ckpt, saved_path, name):
     if isinstance(ckpt, dict):
         if isinstance(ckpt['model'], DistributedDataParallel):
-            ckpt['model'] = ckpt['model'].module.model.state_dict()
             torch.save(ckpt, os.path.join(saved_path, name))
         else:
-            ckpt['model'] = ckpt['model'].model.state_dict()
             torch.save(ckpt, os.path.join(saved_path, name))
     else:
         if isinstance(ckpt, DistributedDataParallel):
@@ -840,11 +838,11 @@ def random_perspective(combination, targets=(), degrees=10, translate=.1, scale=
         if perspective:
             im = cv2.warpPerspective(im, M, dsize=(width, height), borderValue=(114, 114, 114))
             for seg_class in seg:
-                seg[seg_class] = cv2.warpPerspective(seg[seg_class], M, dsize=(width, height), borderValue=0)
+                seg[seg_class] = cv2.warpPerspective(seg[seg_class], M, dsize=(width, height), borderValue=0, flags=cv2.INTER_NEAREST)
         else:  # affine
             im = cv2.warpAffine(im, M[:2], dsize=(width, height), borderValue=(114, 114, 114))
             for seg_class in seg:
-                seg[seg_class] = cv2.warpAffine(seg[seg_class], M[:2], dsize=(width, height), borderValue=0)
+                seg[seg_class] = cv2.warpAffine(seg[seg_class], M[:2], dsize=(width, height), borderValue=0, flags=cv2.INTER_NEAREST)
 
     # Visualize
     # import matplotlib.pyplot as plt

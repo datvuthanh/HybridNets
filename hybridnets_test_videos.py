@@ -99,6 +99,8 @@ if use_cuda:
     if use_float16:
         model = model.half()
 
+regressBoxes = BBoxTransform()
+clipBoxes = ClipBoxes()
 for video_index, video_src in enumerate(video_srcs):
     video_out = f'{output}/{video_index}.mp4'
     cap = cv2.VideoCapture(video_src)
@@ -155,8 +157,6 @@ for video_index, video_src in enumerate(video_srcs):
             frame = frame.astype(np.uint8)
             # cv2.imwrite('seg_{}.jpg'.format(i), ori_img)
 
-            regressBoxes = BBoxTransform()
-            clipBoxes = ClipBoxes()
             out = postprocess(x,
                               anchors, regression, classification,
                               regressBoxes, clipBoxes,
