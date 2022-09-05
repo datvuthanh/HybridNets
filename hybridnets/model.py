@@ -12,24 +12,35 @@ def nms(dets, thresh):
 
 
 class ModelWithLoss(nn.Module):
+
     def __init__(self, model, debug=False):
         super().__init__()
         self.model = model
         self.criterion = FocalLoss()
-        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode, alpha=0.7, beta=0.3, gamma=4.0 / 3, from_logits=False)
-        self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode, alpha=0.25)
+        self.seg_criterion1 = TverskyLoss(mode=self.model.seg_mode,
+                                          alpha=0.7,
+                                          beta=0.3,
+                                          gamma=4.0 / 3,
+                                          from_logits=False)
+        self.seg_criterion2 = FocalLossSeg(mode=self.model.seg_mode,
+                                           alpha=0.25)
         self.debug = debug
 
     def forward(self, imgs, annotations, seg_annot, obj_list=None):
         _, regression, classification, anchors, segmentation = self.model(imgs)
 
         if self.debug:
-            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations,
-                                                imgs=imgs, obj_list=obj_list)
+            cls_loss, reg_loss = self.criterion(classification,
+                                                regression,
+                                                anchors,
+                                                annotations,
+                                                imgs=imgs,
+                                                obj_list=obj_list)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
         else:
-            cls_loss, reg_loss = self.criterion(classification, regression, anchors, annotations)
+            cls_loss, reg_loss = self.criterion(classification, regression,
+                                                anchors, annotations)
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
 
@@ -60,7 +71,13 @@ class ModelWithLoss(nn.Module):
 
 
 class SeparableConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels=None, norm=True, activation=False, onnx_export=False):
+
+    def __init__(self,
+                 in_channels,
+                 out_channels=None,
+                 norm=True,
+                 activation=False,
+                 onnx_export=False):
         super(SeparableConvBlock, self).__init__()
         if out_channels is None:
             out_channels = in_channels
@@ -70,14 +87,23 @@ class SeparableConvBlock(nn.Module):
         #  or just pointwise_conv apply bias.
         # A: Confirmed, just pointwise_conv applies bias, depthwise_conv has no bias.
 
-        self.depthwise_conv = Conv2dStaticSamePadding(in_channels, in_channels,
-                                                      kernel_size=3, stride=1, groups=in_channels, bias=False)
-        self.pointwise_conv = Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=1, stride=1)
+        self.depthwise_conv = Conv2dStaticSamePadding(in_channels,
+                                                      in_channels,
+                                                      kernel_size=3,
+                                                      stride=1,
+                                                      groups=in_channels,
+                                                      bias=False)
+        self.pointwise_conv = Conv2dStaticSamePadding(in_channels,
+                                                      out_channels,
+                                                      kernel_size=1,
+                                                      stride=1)
 
         self.norm = norm
         if self.norm:
             # Warning: pytorch momentum is different from tensorflow's, momentum_pytorch = 1 - momentum_tensorflow
-            self.bn = nn.BatchNorm2d(num_features=out_channels, momentum=0.01, eps=1e-3)
+            self.bn = nn.BatchNorm2d(num_features=out_channels,
+                                     momentum=0.01,
+                                     eps=1e-3)
 
         self.activation = activation
         if self.activation:
@@ -97,7 +123,14 @@ class SeparableConvBlock(nn.Module):
 
 
 class BiFPN(nn.Module):
-    def __init__(self, num_channels, conv_channels, first_time=False, epsilon=1e-4, onnx_export=False, attention=True,
+
+    def __init__(self,
+                 num_channels,
+                 conv_channels,
+                 first_time=False,
+                 epsilon=1e-4,
+                 onnx_export=False,
+                 attention=True,
                  use_p8=False):
         """
 
@@ -114,17 +147,27 @@ class BiFPN(nn.Module):
         self.use_p8 = use_p8
 
         # Conv layers
-        self.conv6_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv5_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv4_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv3_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv4_down = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv5_down = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv6_down = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-        self.conv7_down = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+        self.conv6_up = SeparableConvBlock(num_channels,
+                                           onnx_export=onnx_export)
+        self.conv5_up = SeparableConvBlock(num_channels,
+                                           onnx_export=onnx_export)
+        self.conv4_up = SeparableConvBlock(num_channels,
+                                           onnx_export=onnx_export)
+        self.conv3_up = SeparableConvBlock(num_channels,
+                                           onnx_export=onnx_export)
+        self.conv4_down = SeparableConvBlock(num_channels,
+                                             onnx_export=onnx_export)
+        self.conv5_down = SeparableConvBlock(num_channels,
+                                             onnx_export=onnx_export)
+        self.conv6_down = SeparableConvBlock(num_channels,
+                                             onnx_export=onnx_export)
+        self.conv7_down = SeparableConvBlock(num_channels,
+                                             onnx_export=onnx_export)
         if use_p8:
-            self.conv7_up = SeparableConvBlock(num_channels, onnx_export=onnx_export)
-            self.conv8_down = SeparableConvBlock(num_channels, onnx_export=onnx_export)
+            self.conv7_up = SeparableConvBlock(num_channels,
+                                               onnx_export=onnx_export)
+            self.conv8_down = SeparableConvBlock(num_channels,
+                                                 onnx_export=onnx_export)
 
         # Feature scaling layers
         self.p6_upsample = nn.Upsample(scale_factor=2, mode='nearest')
@@ -160,15 +203,10 @@ class BiFPN(nn.Module):
             self.p5_to_p6 = nn.Sequential(
                 Conv2dStaticSamePadding(conv_channels[2], num_channels, 1),
                 nn.BatchNorm2d(num_channels, momentum=0.01, eps=1e-3),
-                MaxPool2dStaticSamePadding(3, 2)
-            )
-            self.p6_to_p7 = nn.Sequential(
-                MaxPool2dStaticSamePadding(3, 2)
-            )
+                MaxPool2dStaticSamePadding(3, 2))
+            self.p6_to_p7 = nn.Sequential(MaxPool2dStaticSamePadding(3, 2))
             if use_p8:
-                self.p7_to_p8 = nn.Sequential(
-                    MaxPool2dStaticSamePadding(3, 2)
-                )
+                self.p7_to_p8 = nn.Sequential(MaxPool2dStaticSamePadding(3, 2))
 
             self.p4_down_channel_2 = nn.Sequential(
                 Conv2dStaticSamePadding(conv_channels[1], num_channels, 1),
@@ -180,22 +218,30 @@ class BiFPN(nn.Module):
             )
 
         # Weight
-        self.p6_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.p6_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32),
+                                  requires_grad=True)
         self.p6_w1_relu = nn.ReLU()
-        self.p5_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.p5_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32),
+                                  requires_grad=True)
         self.p5_w1_relu = nn.ReLU()
-        self.p4_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.p4_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32),
+                                  requires_grad=True)
         self.p4_w1_relu = nn.ReLU()
-        self.p3_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.p3_w1 = nn.Parameter(torch.ones(2, dtype=torch.float32),
+                                  requires_grad=True)
         self.p3_w1_relu = nn.ReLU()
 
-        self.p4_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.p4_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32),
+                                  requires_grad=True)
         self.p4_w2_relu = nn.ReLU()
-        self.p5_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.p5_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32),
+                                  requires_grad=True)
         self.p5_w2_relu = nn.ReLU()
-        self.p6_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32), requires_grad=True)
+        self.p6_w2 = nn.Parameter(torch.ones(3, dtype=torch.float32),
+                                  requires_grad=True)
         self.p6_w2_relu = nn.ReLU()
-        self.p7_w2 = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
+        self.p7_w2 = nn.Parameter(torch.ones(2, dtype=torch.float32),
+                                  requires_grad=True)
         self.p7_w2_relu = nn.ReLU()
 
         self.attention = attention
@@ -252,24 +298,32 @@ class BiFPN(nn.Module):
         p6_w1 = self.p6_w1_relu(self.p6_w1)
         weight = p6_w1 / (torch.sum(p6_w1, dim=0) + self.epsilon)
         # Connections for P6_0 and P7_0 to P6_1 respectively
-        p6_up = self.conv6_up(self.swish(weight[0] * p6_in + weight[1] * self.p6_upsample(p7_in)))
+        p6_up = self.conv6_up(
+            self.swish(weight[0] * p6_in +
+                       weight[1] * self.p6_upsample(p7_in)))
         # Weights for P5_0 and P6_1 to P5_1
         p5_w1 = self.p5_w1_relu(self.p5_w1)
         weight = p5_w1 / (torch.sum(p5_w1, dim=0) + self.epsilon)
         # Connections for P5_0 and P6_1 to P5_1 respectively
-        p5_up = self.conv5_up(self.swish(weight[0] * p5_in + weight[1] * self.p5_upsample(p6_up)))
+        p5_up = self.conv5_up(
+            self.swish(weight[0] * p5_in +
+                       weight[1] * self.p5_upsample(p6_up)))
 
         # Weights for P4_0 and P5_1 to P4_1
         p4_w1 = self.p4_w1_relu(self.p4_w1)
         weight = p4_w1 / (torch.sum(p4_w1, dim=0) + self.epsilon)
         # Connections for P4_0 and P5_1 to P4_1 respectively
-        p4_up = self.conv4_up(self.swish(weight[0] * p4_in + weight[1] * self.p4_upsample(p5_up)))
+        p4_up = self.conv4_up(
+            self.swish(weight[0] * p4_in +
+                       weight[1] * self.p4_upsample(p5_up)))
 
         # Weights for P3_0 and P4_1 to P3_2
         p3_w1 = self.p3_w1_relu(self.p3_w1)
         weight = p3_w1 / (torch.sum(p3_w1, dim=0) + self.epsilon)
         # Connections for P3_0 and P4_1 to P3_2 respectively
-        p3_out = self.conv3_up(self.swish(weight[0] * p3_in + weight[1] * self.p3_upsample(p4_up)))
+        p3_out = self.conv3_up(
+            self.swish(weight[0] * p3_in +
+                       weight[1] * self.p3_upsample(p4_up)))
 
         if self.first_time:
             p4_in = self.p4_down_channel_2(p4)
@@ -280,27 +334,32 @@ class BiFPN(nn.Module):
         weight = p4_w2 / (torch.sum(p4_w2, dim=0) + self.epsilon)
         # Connections for P4_0, P4_1 and P3_2 to P4_2 respectively
         p4_out = self.conv4_down(
-            self.swish(weight[0] * p4_in + weight[1] * p4_up + weight[2] * self.p4_downsample(p3_out)))
+            self.swish(weight[0] * p4_in + weight[1] * p4_up +
+                       weight[2] * self.p4_downsample(p3_out)))
 
         # Weights for P5_0, P5_1 and P4_2 to P5_2
         p5_w2 = self.p5_w2_relu(self.p5_w2)
         weight = p5_w2 / (torch.sum(p5_w2, dim=0) + self.epsilon)
         # Connections for P5_0, P5_1 and P4_2 to P5_2 respectively
         p5_out = self.conv5_down(
-            self.swish(weight[0] * p5_in + weight[1] * p5_up + weight[2] * self.p5_downsample(p4_out)))
+            self.swish(weight[0] * p5_in + weight[1] * p5_up +
+                       weight[2] * self.p5_downsample(p4_out)))
 
         # Weights for P6_0, P6_1 and P5_2 to P6_2
         p6_w2 = self.p6_w2_relu(self.p6_w2)
         weight = p6_w2 / (torch.sum(p6_w2, dim=0) + self.epsilon)
         # Connections for P6_0, P6_1 and P5_2 to P6_2 respectively
         p6_out = self.conv6_down(
-            self.swish(weight[0] * p6_in + weight[1] * p6_up + weight[2] * self.p6_downsample(p5_out)))
+            self.swish(weight[0] * p6_in + weight[1] * p6_up +
+                       weight[2] * self.p6_downsample(p5_out)))
 
         # Weights for P7_0 and P6_2 to P7_2
         p7_w2 = self.p7_w2_relu(self.p7_w2)
         weight = p7_w2 / (torch.sum(p7_w2, dim=0) + self.epsilon)
         # Connections for P7_0 and P6_2 to P7_2
-        p7_out = self.conv7_down(self.swish(weight[0] * p7_in + weight[1] * self.p7_downsample(p6_out)))
+        p7_out = self.conv7_down(
+            self.swish(weight[0] * p7_in +
+                       weight[1] * self.p7_downsample(p6_out)))
 
         return p3_out, p4_out, p5_out, p6_out, p7_out
 
@@ -370,33 +429,54 @@ class BiFPN(nn.Module):
                 self.swish(p7_in + p7_up + self.p7_downsample(p6_out)))
 
             # Connections for P8_0 and P7_2 to P8_2
-            p8_out = self.conv8_down(self.swish(p8_in + self.p8_downsample(p7_out)))
+            p8_out = self.conv8_down(
+                self.swish(p8_in + self.p8_downsample(p7_out)))
 
             return p3_out, p4_out, p5_out, p6_out, p7_out, p8_out
         else:
             # Connections for P7_0 and P6_2 to P7_2
-            p7_out = self.conv7_down(self.swish(p7_in + self.p7_downsample(p6_out)))
+            p7_out = self.conv7_down(
+                self.swish(p7_in + self.p7_downsample(p6_out)))
 
             return p3_out, p4_out, p5_out, p6_out, p7_out
 
 
 class Regressor(nn.Module):
-    def __init__(self, in_channels, num_anchors, num_layers, pyramid_levels=5, onnx_export=False):
+
+    def __init__(self,
+                 in_channels,
+                 num_anchors,
+                 num_layers,
+                 pyramid_levels=5,
+                 onnx_export=False):
         super(Regressor, self).__init__()
         self.num_layers = num_layers
 
-        self.conv_list = nn.ModuleList(
-            [SeparableConvBlock(in_channels, in_channels, norm=False, activation=False) for i in range(num_layers)])
-        self.bn_list = nn.ModuleList(
-            [nn.ModuleList([nn.BatchNorm2d(in_channels, momentum=0.01, eps=1e-3) for i in range(num_layers)]) for j in
-             range(pyramid_levels)])
-        self.header = SeparableConvBlock(in_channels, num_anchors * 4, norm=False, activation=False)
+        self.conv_list = nn.ModuleList([
+            SeparableConvBlock(in_channels,
+                               in_channels,
+                               norm=False,
+                               activation=False,
+                               onnx_export=onnx_export) for i in range(num_layers)
+        ])
+        self.bn_list = nn.ModuleList([
+            nn.ModuleList([
+                nn.BatchNorm2d(in_channels, momentum=0.01, eps=1e-3)
+                for i in range(num_layers)
+            ]) for j in range(pyramid_levels)
+        ])
+        self.header = SeparableConvBlock(in_channels,
+                                         num_anchors * 4,
+                                         norm=False,
+                                         activation=False,
+                                         onnx_export=onnx_export)
         self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
 
     def forward(self, inputs):
         feats = []
         for feat, bn_list in zip(inputs, self.bn_list):
-            for i, bn, conv in zip(range(self.num_layers), bn_list, self.conv_list):
+            for i, bn, conv in zip(range(self.num_layers), bn_list,
+                                   self.conv_list):
                 feat = conv(feat)
                 feat = bn(feat)
                 feat = self.swish(feat)
@@ -413,7 +493,8 @@ class Regressor(nn.Module):
 
 
 class Conv3x3BNSwish(nn.Module):
-    def __init__(self, in_channels, out_channels, upsample=False):
+
+    def __init__(self, in_channels, out_channels, upsample=False,onnx_export=False):
         super().__init__()
 
         self.swish = Swish()
@@ -421,11 +502,16 @@ class Conv3x3BNSwish(nn.Module):
         self.upsample = upsample
 
         self.block = nn.Sequential(
-            Conv2dStaticSamePadding(in_channels, out_channels, kernel_size=(3, 3), stride=1, padding=1, bias=False),
+            Conv2dStaticSamePadding(in_channels,
+                                    out_channels,
+                                    kernel_size=(3, 3),
+                                    stride=1,
+                                    padding=1,
+                                    bias=False),
             nn.BatchNorm2d(out_channels, momentum=0.01, eps=1e-3),
         )
 
-        self.conv_sp = SeparableConvBlock(out_channels, onnx_export=False)
+        self.conv_sp = SeparableConvBlock(out_channels, onnx_export=onnx_export)
 
         # self.block = nn.Sequential(
         #     nn.Conv2d(
@@ -438,19 +524,36 @@ class Conv3x3BNSwish(nn.Module):
     def forward(self, x):
         x = self.conv_sp(self.swish(self.block(x)))
         if self.upsample:
-            x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
+            x = F.interpolate(x,
+                              scale_factor=2,
+                              mode="bilinear",
+                              align_corners=True)
         return x
 
 
 class SegmentationBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, n_upsamples=0):
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 n_upsamples=0,
+                 onnx_export=False):
         super().__init__()
 
-        blocks = [Conv3x3BNSwish(in_channels, out_channels, upsample=bool(n_upsamples))]
+        blocks = [
+            Conv3x3BNSwish(in_channels,
+                           out_channels,
+                           upsample=bool(n_upsamples),
+                           onnx_export=onnx_export)
+        ]
 
         if n_upsamples > 1:
             for _ in range(1, n_upsamples):
-                blocks.append(Conv3x3BNSwish(out_channels, out_channels, upsample=True))
+                blocks.append(
+                    Conv3x3BNSwish(out_channels,
+                                   out_channels,
+                                   upsample=True,
+                                   onnx_export=onnx_export))
 
         self.block = nn.Sequential(*blocks)
 
@@ -459,14 +562,13 @@ class SegmentationBlock(nn.Module):
 
 
 class MergeBlock(nn.Module):
+
     def __init__(self, policy):
         super().__init__()
         if policy not in ["add", "cat"]:
             raise ValueError(
                 "`merge_policy` must be one of: ['add', 'cat'], got {}".format(
-                    policy
-                )
-            )
+                    policy))
         self.policy = policy
 
     def forward(self, x):
@@ -476,26 +578,33 @@ class MergeBlock(nn.Module):
             return torch.cat(x, dim=1)
         else:
             raise ValueError(
-                "`merge_policy` must be one of: ['add', 'cat'], got {}".format(self.policy)
-            )
+                "`merge_policy` must be one of: ['add', 'cat'], got {}".format(
+                    self.policy))
 
 
 class BiFPNDecoder(nn.Module):
-    def __init__(
-            self,
-            encoder_depth=5,
-            pyramid_channels=64,
-            segmentation_channels=64,
-            dropout=0.2,
-            merge_policy="add", ):
+
+    def __init__(self,
+                 encoder_depth=5,
+                 pyramid_channels=64,
+                 segmentation_channels=64,
+                 dropout=0.2,
+                 merge_policy="add",
+                 onnx_export=False):
         super().__init__()
 
         self.seg_blocks = nn.ModuleList([
-            SegmentationBlock(pyramid_channels, segmentation_channels, n_upsamples=n_upsamples)
-            for n_upsamples in [5,4, 3, 2, 1]
+            SegmentationBlock(pyramid_channels,
+                              segmentation_channels,
+                              n_upsamples=n_upsamples,
+                              onnx_export=onnx_export)
+            for n_upsamples in [5, 4, 3, 2, 1]
         ])
-        
-        self.seg_p2 = SegmentationBlock(32, 64, n_upsamples=0)
+
+        self.seg_p2 = SegmentationBlock(32,
+                                        64,
+                                        n_upsamples=0,
+                                        onnx_export=onnx_export)
 
         self.merge = MergeBlock(merge_policy)
 
@@ -504,13 +613,16 @@ class BiFPNDecoder(nn.Module):
     def forward(self, inputs):
         p2, p3, p4, p5, p6, p7 = inputs
 
-        feature_pyramid = [seg_block(p) for seg_block, p in zip(self.seg_blocks, [p7, p6, p5, p4, p3])]
-        
-        p2 = self.seg_p2(p2)
-            
-        p3,p4,p5,p6,p7 = feature_pyramid
+        feature_pyramid = [
+            seg_block(p)
+            for seg_block, p in zip(self.seg_blocks, [p7, p6, p5, p4, p3])
+        ]
 
-        x = self.merge((p2,p3,p4,p5,p6,p7))
+        p2 = self.seg_p2(p2)
+
+        p3, p4, p5, p6, p7 = feature_pyramid
+
+        x = self.merge((p2, p3, p4, p5, p6, p7))
 
         x = self.dropout(x)
 
@@ -518,30 +630,51 @@ class BiFPNDecoder(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_channels, num_anchors, num_classes, num_layers, pyramid_levels=5, onnx_export=False):
+
+    def __init__(self,
+                 in_channels,
+                 num_anchors,
+                 num_classes,
+                 num_layers,
+                 pyramid_levels=5,
+                 onnx_export=False):
         super(Classifier, self).__init__()
         self.num_anchors = num_anchors
         self.num_classes = num_classes
         self.num_layers = num_layers
-        self.conv_list = nn.ModuleList(
-            [SeparableConvBlock(in_channels, in_channels, norm=False, activation=False) for i in range(num_layers)])
-        self.bn_list = nn.ModuleList(
-            [nn.ModuleList([nn.BatchNorm2d(in_channels, momentum=0.01, eps=1e-3) for i in range(num_layers)]) for j in
-             range(pyramid_levels)])
-        self.header = SeparableConvBlock(in_channels, num_anchors * num_classes, norm=False, activation=False)
+        self.conv_list = nn.ModuleList([
+            SeparableConvBlock(in_channels,
+                               in_channels,
+                               norm=False,
+                               activation=False,
+                               onnx_export=onnx_export)for i in range(num_layers)
+        ])
+        self.bn_list = nn.ModuleList([
+            nn.ModuleList([
+                nn.BatchNorm2d(in_channels, momentum=0.01, eps=1e-3)
+                for i in range(num_layers)
+            ]) for j in range(pyramid_levels)
+        ])
+        self.header = SeparableConvBlock(in_channels,
+                                         num_anchors * num_classes,
+                                         norm=False,
+                                         activation=False,
+                                         onnx_export=onnx_export)
         self.swish = MemoryEfficientSwish() if not onnx_export else Swish()
 
     def forward(self, inputs):
         feats = []
         for feat, bn_list in zip(inputs, self.bn_list):
-            for i, bn, conv in zip(range(self.num_layers), bn_list, self.conv_list):
+            for i, bn, conv in zip(range(self.num_layers), bn_list,
+                                   self.conv_list):
                 feat = conv(feat)
                 feat = bn(feat)
                 feat = self.swish(feat)
             feat = self.header(feat)
 
             feat = feat.permute(0, 2, 3, 1)
-            feat = feat.contiguous().view(feat.shape[0], feat.shape[1], feat.shape[2], self.num_anchors,
+            feat = feat.contiguous().view(feat.shape[0], feat.shape[1],
+                                          feat.shape[2], self.num_anchors,
                                           self.num_classes)
             feat = feat.contiguous().view(feat.shape[0], -1, self.num_classes)
 
@@ -554,6 +687,7 @@ class Classifier(nn.Module):
 
 
 class SwishImplementation(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, i):
         result = i * torch.sigmoid(i)
@@ -568,11 +702,13 @@ class SwishImplementation(torch.autograd.Function):
 
 
 class MemoryEfficientSwish(nn.Module):
+
     def forward(self, x):
         return SwishImplementation.apply(x)
 
 
 class Swish(nn.Module):
+
     def forward(self, x):
         return x * torch.sigmoid(x)
 
@@ -583,7 +719,9 @@ def drop_connect(inputs, p, training):
     batch_size = inputs.shape[0]
     keep_prob = 1 - p
     random_tensor = keep_prob
-    random_tensor += torch.rand([batch_size, 1, 1, 1], dtype=inputs.dtype, device=inputs.device)
+    random_tensor += torch.rand([batch_size, 1, 1, 1],
+                                dtype=inputs.dtype,
+                                device=inputs.device)
     binary_tensor = torch.floor(random_tensor)
     output = inputs / keep_prob * binary_tensor
     return output
@@ -601,20 +739,36 @@ def get_same_padding_conv2d(image_size=None):
 class Conv2dDynamicSamePadding(nn.Conv2d):
     """ 2D Convolutions like TensorFlow, for a dynamic image size """
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1, groups=1, bias=True):
-        super().__init__(in_channels, out_channels, kernel_size, stride, 0, dilation, groups, bias)
-        self.stride = self.stride if len(self.stride) == 2 else [self.stride[0]] * 2
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 stride=1,
+                 dilation=1,
+                 groups=1,
+                 bias=True):
+        super().__init__(in_channels, out_channels, kernel_size, stride, 0,
+                         dilation, groups, bias)
+        self.stride = self.stride if len(
+            self.stride) == 2 else [self.stride[0]] * 2
 
     def forward(self, x):
         ih, iw = x.size()[-2:]
         kh, kw = self.weight.size()[-2:]
         sh, sw = self.stride
         oh, ow = math.ceil(ih / sh), math.ceil(iw / sw)
-        pad_h = max((oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih, 0)
-        pad_w = max((ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw, 0)
+        pad_h = max(
+            (oh - 1) * self.stride[0] + (kh - 1) * self.dilation[0] + 1 - ih,
+            0)
+        pad_w = max(
+            (ow - 1) * self.stride[1] + (kw - 1) * self.dilation[1] + 1 - iw,
+            0)
         if pad_h > 0 or pad_w > 0:
-            x = F.pad(x, [pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2])
-        return F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+            x = F.pad(x, [
+                pad_w // 2, pad_w - pad_w // 2, pad_h // 2, pad_h - pad_h // 2
+            ])
+        return F.conv2d(x, self.weight, self.bias, self.stride, self.padding,
+                        self.dilation, self.groups)
 
 
 class MBConvBlock(nn.Module):
@@ -634,7 +788,8 @@ class MBConvBlock(nn.Module):
         self._block_args = block_args
         self._bn_mom = 1 - global_params.batch_norm_momentum
         self._bn_eps = global_params.batch_norm_epsilon
-        self.has_se = (self._block_args.se_ratio is not None) and (0 < self._block_args.se_ratio <= 1)
+        self.has_se = (self._block_args.se_ratio
+                       is not None) and (0 < self._block_args.se_ratio <= 1)
         self.id_skip = block_args.id_skip  # skip connection and drop connect
 
         # Get static or dynamic convolution depending on image size
@@ -644,27 +799,50 @@ class MBConvBlock(nn.Module):
         inp = self._block_args.input_filters  # number of input channels
         oup = self._block_args.input_filters * self._block_args.expand_ratio  # number of output channels
         if self._block_args.expand_ratio != 1:
-            self._expand_conv = Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
-            self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+            self._expand_conv = Conv2d(in_channels=inp,
+                                       out_channels=oup,
+                                       kernel_size=1,
+                                       bias=False)
+            self._bn0 = nn.BatchNorm2d(num_features=oup,
+                                       momentum=self._bn_mom,
+                                       eps=self._bn_eps)
 
         # Depthwise convolution phase
         k = self._block_args.kernel_size
         s = self._block_args.stride
         self._depthwise_conv = Conv2d(
-            in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
-            kernel_size=k, stride=s, bias=False)
-        self._bn1 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+            in_channels=oup,
+            out_channels=oup,
+            groups=oup,  # groups makes it depthwise
+            kernel_size=k,
+            stride=s,
+            bias=False)
+        self._bn1 = nn.BatchNorm2d(num_features=oup,
+                                   momentum=self._bn_mom,
+                                   eps=self._bn_eps)
 
         # Squeeze and Excitation layer, if desired
         if self.has_se:
-            num_squeezed_channels = max(1, int(self._block_args.input_filters * self._block_args.se_ratio))
-            self._se_reduce = Conv2d(in_channels=oup, out_channels=num_squeezed_channels, kernel_size=1)
-            self._se_expand = Conv2d(in_channels=num_squeezed_channels, out_channels=oup, kernel_size=1)
+            num_squeezed_channels = max(
+                1,
+                int(self._block_args.input_filters *
+                    self._block_args.se_ratio))
+            self._se_reduce = Conv2d(in_channels=oup,
+                                     out_channels=num_squeezed_channels,
+                                     kernel_size=1)
+            self._se_expand = Conv2d(in_channels=num_squeezed_channels,
+                                     out_channels=oup,
+                                     kernel_size=1)
 
         # Output phase
         final_oup = self._block_args.output_filters
-        self._project_conv = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
-        self._bn2 = nn.BatchNorm2d(num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
+        self._project_conv = Conv2d(in_channels=oup,
+                                    out_channels=final_oup,
+                                    kernel_size=1,
+                                    bias=False)
+        self._bn2 = nn.BatchNorm2d(num_features=final_oup,
+                                   momentum=self._bn_mom,
+                                   eps=self._bn_eps)
         self._swish = MemoryEfficientSwish()
 
     def forward(self, inputs, drop_connect_rate=None):
@@ -700,7 +878,9 @@ class MBConvBlock(nn.Module):
         input_filters, output_filters = self._block_args.input_filters, self._block_args.output_filters
         if self.id_skip and self._block_args.stride == 1 and input_filters == output_filters:
             if drop_connect_rate:
-                x = drop_connect(x, p=drop_connect_rate, training=self.training)
+                x = drop_connect(x,
+                                 p=drop_connect_rate,
+                                 training=self.training)
             x = x + inputs  # skip connection
         return x
 
@@ -714,10 +894,22 @@ class Conv2dStaticSamePadding(nn.Module):
     The real keras/tensorflow conv2d with same padding
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, groups=1, dilation=1, **kwargs):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 stride=1,
+                 bias=True,
+                 groups=1,
+                 dilation=1,
+                 **kwargs):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride,
-                              bias=bias, groups=groups)
+        self.conv = nn.Conv2d(in_channels,
+                              out_channels,
+                              kernel_size,
+                              stride=stride,
+                              bias=bias,
+                              groups=groups)
         self.stride = self.conv.stride
         self.kernel_size = self.conv.kernel_size
         self.dilation = self.conv.dilation
@@ -734,10 +926,12 @@ class Conv2dStaticSamePadding(nn.Module):
 
     def forward(self, x):
         h, w = x.shape[-2:]
-        
-        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
-        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
-        
+
+        extra_h = (math.ceil(w / self.stride[1]) -
+                   1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) -
+                   1) * self.stride[0] - h + self.kernel_size[0]
+
         left = extra_h // 2
         right = extra_h - left
         top = extra_v // 2
@@ -772,9 +966,11 @@ class MaxPool2dStaticSamePadding(nn.Module):
 
     def forward(self, x):
         h, w = x.shape[-2:]
-        
-        extra_h = (math.ceil(w / self.stride[1]) - 1) * self.stride[1] - w + self.kernel_size[1]
-        extra_v = (math.ceil(h / self.stride[0]) - 1) * self.stride[0] - h + self.kernel_size[0]
+
+        extra_h = (math.ceil(w / self.stride[1]) -
+                   1) * self.stride[1] - w + self.kernel_size[1]
+        extra_v = (math.ceil(h / self.stride[0]) -
+                   1) * self.stride[0] - h + self.kernel_size[0]
 
         left = extra_h // 2
         right = extra_h - left
@@ -814,28 +1010,49 @@ class Activation(nn.Module):
         elif callable(name):
             self.activation = name(**params)
         else:
-            raise ValueError('Activation should be callable/sigmoid/softmax/logsoftmax/tanh/None; got {}'.format(name))
+            raise ValueError(
+                'Activation should be callable/sigmoid/softmax/logsoftmax/tanh/None; got {}'
+                .format(name))
+
     def forward(self, x):
         return self.activation(x)
 
 
 class SegmentationHead(nn.Sequential):
 
-    def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1):
-        conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
-        upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size=3,
+                 activation=None,
+                 upsampling=1):
+        conv2d = nn.Conv2d(in_channels,
+                           out_channels,
+                           kernel_size=kernel_size,
+                           padding=kernel_size // 2)
+        upsampling = nn.UpsamplingBilinear2d(
+            scale_factor=upsampling) if upsampling > 1 else nn.Identity()
         activation = Activation(activation)
         super().__init__(conv2d, upsampling, activation)
 
 
 class ClassificationHead(nn.Sequential):
 
-    def __init__(self, in_channels, classes, pooling="avg", dropout=0.2, activation=None):
+    def __init__(self,
+                 in_channels,
+                 classes,
+                 pooling="avg",
+                 dropout=0.2,
+                 activation=None):
         if pooling not in ("max", "avg"):
-            raise ValueError("Pooling should be one of ('max', 'avg'), got {}.".format(pooling))
-        pool = nn.AdaptiveAvgPool2d(1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
+            raise ValueError(
+                "Pooling should be one of ('max', 'avg'), got {}.".format(
+                    pooling))
+        pool = nn.AdaptiveAvgPool2d(
+            1) if pooling == 'avg' else nn.AdaptiveMaxPool2d(1)
         flatten = nn.Flatten()
-        dropout = nn.Dropout(p=dropout, inplace=True) if dropout else nn.Identity()
+        dropout = nn.Dropout(p=dropout,
+                             inplace=True) if dropout else nn.Identity()
         linear = nn.Linear(in_channels, classes, bias=True)
         activation = Activation(activation)
         super().__init__(pool, flatten, dropout, linear, activation)
@@ -843,7 +1060,6 @@ class ClassificationHead(nn.Sequential):
 
 if __name__ == '__main__':
     from tensorboardX import SummaryWriter
-
 
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
