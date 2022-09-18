@@ -30,7 +30,7 @@ seg_list: ['road',
 seg_multilabel: false  # a pixel can belong to multiple labels (i.e. lane line + underlying road)
 
 dataset:
-  dataroot: ./datasets/bdd100k
+  dataroot: ./datasets/bdd100k/images/100k
   labelroot: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
   segroot:
   # must be in correct order with seg_list
