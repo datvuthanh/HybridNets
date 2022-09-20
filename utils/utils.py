@@ -286,7 +286,6 @@ def box_iou(box1, box2):
         # box = 4xn
         return (box[2] - box[0]) * (box[3] - box[1])
 
-    box1 = box1.cuda()
     area1 = box_area(box1.T)
     area2 = box_area(box2.T)
 

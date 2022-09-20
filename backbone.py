@@ -31,13 +31,18 @@ class HybridNetsBackbone(nn.Module):
             0: [40, 112, 320],
             1: [40, 112, 320],
             2: [48, 120, 352],
-            3: [48, 136, 384],
+            3: [256, 512, 1024],
             4: [56, 160, 448],
             5: [64, 176, 512],
             6: [72, 200, 576],
             7: [72, 200, 576],
             8: [80, 224, 640],
         }
+        
+        if self.compound_coef==3:
+            p2_shape=128
+        else:
+            p2_shape=32
 
         num_anchors = len(self.aspect_ratios) * self.num_scales
 
@@ -56,7 +61,7 @@ class HybridNetsBackbone(nn.Module):
 
         '''Modified by Dat Vu'''
         # self.decoder = DecoderModule()
-        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef])
+        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef],p2_shape=p2_shape)
 
         self.segmentation_head = SegmentationHead(
             in_channels=64,
@@ -76,7 +81,7 @@ class HybridNetsBackbone(nn.Module):
                                **kwargs)
 
         if backbone_name:
-            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(2,3,4))  # P3,P4,P5
+            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P3,P4,P5
         else:
             # EfficientNet_Pytorch
             self.encoder = get_encoder(

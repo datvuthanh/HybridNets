@@ -98,7 +98,7 @@ class EfficientNetBaseEncoder(EfficientNet, EncoderMixin):
         self._out_channels = out_channels
         self._depth = depth
         self._in_channels = 3
-
+        self.act1=Swish()
         del self.classifier
 
     def get_stages(self):

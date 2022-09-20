@@ -30,8 +30,12 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
     loss_classification_ls = []
     loss_segmentation_ls = []
     stats, ap, ap_class = [], [], []
-    iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
-    num_thresholds = iou_thresholds.numel()
+    if opt.num_gpus == 1:
+        iou_thresholds = torch.linspace(0.5, 0.95, 10).cuda()  # iou vector for mAP@0.5:0.95
+        num_thresholds = iou_thresholds.numel()
+    else:
+        iou_thresholds = torch.linspace(0.5, 0.95, 10)  # iou vector for mAP@0.5:0.95
+        num_thresholds = iou_thresholds.numel()
     names = {i: v for i, v in enumerate(params.obj_list)}
     nc = len(names)
     ncs = 1 if seg_mode == BINARY_MODE else len(params.seg_list) + 1
@@ -85,7 +89,10 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
 
                 pred = np.column_stack([ou['rois'], ou['scores']])
                 pred = np.column_stack([pred, ou['class_ids']])
-                pred = torch.from_numpy(pred).cuda()
+                if opt.num_gpus == 1:
+                    pred = torch.from_numpy(pred).cuda()
+                else:
+                    pred = torch.from_numpy(pred)
 
                 target_class = labels[:, 4].tolist() if nl else []  # target class
 
