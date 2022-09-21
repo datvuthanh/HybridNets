@@ -85,7 +85,7 @@ class HybridNetsBackbone(nn.Module):
         else:
             # EfficientNet_Pytorch
             self.encoder = get_encoder(
-                'efficientnet-b' + str(self.backbone_compound_coef[compound_coef]),
+                'tu-hrnet_w18',
                 in_channels=3,
                 depth=5,
                 weights='imagenet',
