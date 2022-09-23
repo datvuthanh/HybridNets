@@ -25,7 +25,7 @@ def get_args():
     parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
     parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create another backbone replacing efficientnet. '
                                                             'https://github.com/rwightman/pytorch-image-models')
-    parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
+    parser.add_argument('-c', '--compound_coef', type=int, default=0, help='Coefficient of efficientnet backbone')
     parser.add_argument('-n', '--num_workers', type=int, default=8, help='Num_workers of dataloader')
     parser.add_argument('-b', '--batch_size', type=int, default=12, help='Number of images per batch among all devices')
     parser.add_argument('--freeze_backbone', type=boolean_string, default=False,

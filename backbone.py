@@ -28,10 +28,10 @@ class HybridNetsBackbone(nn.Module):
         self.num_scales = len(kwargs.get('scales', [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]))
         conv_channel_coef = {
             # the channels of P3/P4/P5.
-            0: [40, 112, 320],
+            0: [256, 512, 1024],
             1: [40, 112, 320],
             2: [48, 120, 352],
-            3: [256, 512, 1024],
+            3: [48, 136, 384],
             4: [56, 160, 448],
             5: [64, 176, 512],
             6: [72, 200, 576],
@@ -39,7 +39,7 @@ class HybridNetsBackbone(nn.Module):
             8: [80, 224, 640],
         }
         
-        if self.compound_coef==3:
+        if self.compound_coef==0:
             p2_shape=128
         else:
             p2_shape=32
