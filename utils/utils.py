@@ -594,7 +594,7 @@ class ClipBoxes(nn.Module):
 
 class Anchors(nn.Module):
 
-    def __init__(self, anchor_scale=4., pyramid_levels=None, **kwargs):
+    def __init__(self, anchor_scale=4., pyramid_levels=None, onnx_export=False, **kwargs):
         super().__init__()
         self.anchor_scale = anchor_scale
 
@@ -609,6 +609,7 @@ class Anchors(nn.Module):
 
         self.last_anchors = {}
         self.last_shape = None
+        self.onnx_export = onnx_export
 
     def forward(self, image, dtype=torch.float32):
         """Generates multiscale anchor boxes.
@@ -629,7 +630,7 @@ class Anchors(nn.Module):
           ValueError: input size must be the multiple of largest feature stride.
         """
         image_shape = image.shape[2:]
-
+        # image_shape = [256, 512]
         if image_shape == self.last_shape and image.device in self.last_anchors:
             return self.last_anchors[image.device]
 
@@ -668,6 +669,10 @@ class Anchors(nn.Module):
 
         anchor_boxes = np.vstack(boxes_all)
 
+        if self.onnx_export:
+            filename = 'anchor_{}x{}.npy'.format(image_shape[0], image_shape[1])
+            np.save(filename, np.expand_dims(anchor_boxes, 0))
+            print("saved anchor tensor to {}, load with np to use with onnx...".format(filename))
         anchor_boxes = torch.from_numpy(anchor_boxes.astype(dtype)).to(image.device)
         anchor_boxes = anchor_boxes.unsqueeze(0)
 
@@ -869,10 +874,14 @@ def random_perspective(combination, targets=(), degrees=10, translate=.1, scale=
         new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
 
         # filter candidates
+        # print(new)
         i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.2)
+        # print(i)
         targets = targets[i]
+        # print(targets)
         targets[:, 1:5] = new[i]
 
+    # print(im.shape)
     combination = (im, seg)
     return combination, targets
 

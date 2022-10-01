@@ -139,7 +139,7 @@ for video_index, video_src in enumerate(video_srcs):
             seg = seg[:, :, int(pad[1]):int(h+pad[1]), int(pad[0]):int(w+pad[0])]
             # (1, C, W, H) -> (1, W, H)
             if seg_mode == BINARY_MODE:
-                seg_mask = torch.where(seg >= 0.5, 1, 0)
+                seg_mask = torch.where(seg >= 0, 1, 0)
                 seg_mask.squeeze_(1)
             else:
                 _, seg_mask = torch.max(seg, 1)
@@ -176,7 +176,7 @@ for video_index, video_src in enumerate(video_srcs):
     print("video: {}".format(video_src))
     print("frame: {}".format(frame_count))
     print("second: {}".format(t2-t1))
-    print("fps: {}".format((t2-t1)/frame_count))
+    print("fps: {}".format(frame_count/(t2-t1)))
 
     cap.release()
     out_stream.release()

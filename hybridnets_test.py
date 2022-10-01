@@ -13,6 +13,7 @@ from torchvision import transforms
 import argparse
 from utils.constants import *
 from collections import OrderedDict
+from torch.nn import functional as F
 
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
@@ -140,14 +141,15 @@ with torch.no_grad():
     seg_mask_list = []
     # (B, C, W, H) -> (B, W, H)
     if seg_mode == BINARY_MODE:
-        seg_mask = torch.where(seg >= 0.5, 1, 0)
+        seg_mask = torch.where(seg >= 0, 1, 0)
+        # print(torch.count_nonzero(seg_mask))
         seg_mask.squeeze_(1)
         seg_mask_list.append(seg_mask)
     elif seg_mode == MULTICLASS_MODE:
         _, seg_mask = torch.max(seg, 1)
         seg_mask_list.append(seg_mask)
     else:
-        seg_mask_list = [torch.where(seg[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
+        seg_mask_list = [torch.where(torch.sigmoid(seg)[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
         # but remove background class from the list
         seg_mask_list.pop(0)
     # (B, W, H) -> (W, H)

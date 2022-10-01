@@ -15,10 +15,12 @@ from backbone import HybridNetsBackbone
 from utils.utils import get_last_weights, init_weights, boolean_string, \
     save_checkpoint, DataLoaderX, Params
 from hybridnets.dataset import BddDataset
+from hybridnets.custom_dataset import CustomDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
 from utils.constants import *
 from collections import OrderedDict
+from torchinfo import summary
 
 
 def get_args():
@@ -112,7 +114,7 @@ def train(opt):
     training_generator = DataLoaderX(
         train_dataset,
         batch_size=opt.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=opt.num_workers,
         pin_memory=params.pin_memory,
         collate_fn=BddDataset.collate_fn
@@ -191,6 +193,7 @@ def train(opt):
         model.bifpndecoder.requires_grad_(False)
         model.segmentation_head.requires_grad_(False)
         print('[Info] freezed segmentation head')
+    #summary(model, (1, 3, 384, 640), device='cpu')
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
@@ -254,7 +257,7 @@ def train(opt):
                         cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
                         reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
                         seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
-                        
+
                         loss = cls_loss + reg_loss + seg_loss
                         
                     if loss == 0 or not torch.isfinite(loss):

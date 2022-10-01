@@ -9,7 +9,9 @@ from utils.utils import ConfusionMatrix, postprocess, scale_coords, process_batc
     save_checkpoint, DataLoaderX, BBoxTransform, ClipBoxes, boolean_string, Params
 from backbone import HybridNetsBackbone
 from hybridnets.dataset import BddDataset
+from hybridnets.custom_dataset import CustomDataset
 from torchvision import transforms
+import torch.nn.functional as F
 from hybridnets.model import ModelWithLoss
 from utils.constants import *
 
@@ -139,7 +141,7 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
                 segmentation = segmentation.log_softmax(dim=1).exp()
                 _, segmentation = torch.max(segmentation, 1)  # (bs, C, H, W) -> (bs, H, W)
             else:
-                y_pred = F.logsigmoid(y_pred).exp()
+                segmentation = F.logsigmoid(segmentation).exp()
 
             tp_seg, fp_seg, fn_seg, tn_seg = smp_metrics.get_stats(segmentation, seg_annot, mode=seg_mode,
                                                                    threshold=0.5 if seg_mode != MULTICLASS_MODE else None,
@@ -185,7 +187,11 @@ def val(model, val_generator, params, opt, seg_mode, is_training, **kwargs):
 
         miou_ls = []
         for i in range(len(params.seg_list)):
-            miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i+1]) / 2))
+            if seg_mode == BINARY_MODE:
+                # typically this runs once with i == 0
+                miou_ls.append(np.mean(iou_ls[i]))
+            else:
+                miou_ls.append(np.mean( (iou_ls[0] + iou_ls[i+1]) / 2))
 
         for i in range(ncs):
             iou_ls[i] = np.mean(iou_ls[i])

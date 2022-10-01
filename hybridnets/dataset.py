@@ -49,13 +49,13 @@ class BddDataset(Dataset):
         for root in seg_root:
             self.seg_root.append(Path(root) / indicator)
         self.albumentations_transform = A.Compose([
-            A.Blur(p=0.5),
-            A.MedianBlur(p=0.5),
-            A.ToGray(p=0.5),
-            A.CLAHE(p=0.5),
-            A.RandomBrightnessContrast(p=0.5),
-            A.RandomGamma(p=0.5),
-            A.ImageCompression(quality_lower=75, p=0.5)],
+            A.Blur(p=0.01),
+            A.MedianBlur(p=0.01),
+            A.ToGray(p=0.01),
+            A.CLAHE(p=0.01),
+            A.RandomBrightnessContrast(p=0.01),
+            A.RandomGamma(p=0.01),
+            A.ImageCompression(quality_lower=75, p=0.01)],
             bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']),
             additional_targets={'mask0': 'mask'})
         
@@ -348,10 +348,9 @@ class BddDataset(Dataset):
         # cv2.imwrite(data["image"].split("/")[-1], img)
 
         # np.savetxt('seglabelroad_before_lb', seg_label['road'])
-        (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=True,
+        (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=False,
                                                              scaleup=self.is_train)
         shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling  
-        
         labels_app = np.array([])
         if len(labels):
             # update labels after letterbox
@@ -386,8 +385,9 @@ class BddDataset(Dataset):
         # cv2.imwrite('_background.jpg', background)
 
         # for anno in labels_app:
-        #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
-        #   cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
+        #     print(anno)
+        #     x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
+        #     cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
         # cv2.imwrite('_box.jpg', img_copy)
         # exit()
         
