@@ -92,12 +92,12 @@ def kmean_anchors(path='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen=10
     else:
         dataset = path  # dataset
 
-    labels = [db['label'] for db in dataset.db]
+    labels = [db['label'] for db in dataset.db if len(db['label'])]
     labels = np.vstack(labels)
     if not (labels[:, 1:] <= 1).all():
         # normalize label
-        labels[:, [2, 4]] /= dataset.shapes[0]
-        labels[:, [1, 3]] /= dataset.shapes[1]
+        labels[:, [2, 4]] = labels[:, [2, 4]] / dataset.shapes[0]
+        labels[:, [1, 3]] = labels[:, [1, 3]] / dataset.shapes[1]
     # Get label wh
     shapes = img_size * dataset.shapes / dataset.shapes.max()
     # wh0 = np.concatenate([l[:, 3:5] * shapes for l in labels])  # wh

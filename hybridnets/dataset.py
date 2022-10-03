@@ -12,6 +12,7 @@ import json
 import albumentations as A
 from collections import OrderedDict
 from utils.constants import *
+import torchshow
 
 
 class BddDataset(Dataset):
@@ -57,6 +58,7 @@ class BddDataset(Dataset):
             A.ImageCompression(quality_lower=75, p=0.01)],
             bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels']),
             additional_targets={'mask0': 'mask'})
+        
 
         self.shapes = np.array(params.dataset['org_img_size'])
         self.obj_combine = params.obj_combine
@@ -80,6 +82,7 @@ class BddDataset(Dataset):
             seg_path = {}
             for i in range(len(self.seg_list)):
                 seg_path[self.seg_list[i]] = label_path.replace(str(self.label_root), str(self.seg_root[i])).replace(".json", ".png")
+                # seg_path[self.seg_list[i]] = cv2.imread(label_path.replace(str(self.label_root), str(self.seg_root[i])).replace(".json", ".png"), 0)
             with open(label_path, 'r') as f:
                 label = json.load(f)
             data = label['frames'][0]['objects']
@@ -99,7 +102,11 @@ class BddDataset(Dataset):
                 box = self.convert((width, height), (x1, x2, y1, y2))
                 gt[idx][1:] = list(box)
 
+            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
             rec = {
+                # 'image': img,
                 'image': image_path,
                 'label': gt,
             }
@@ -148,9 +155,11 @@ class BddDataset(Dataset):
         det_label = data["label"]
         img = cv2.imread(data["image"], cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # img = data["image"]
         seg_label = OrderedDict()
         for seg_class in self.seg_list:
             seg_label[seg_class] = cv2.imread(data[seg_class], 0)
+            # seg_label[seg_class] = data[seg_class]
 
         resized_shape = self.inputsize
         if isinstance(resized_shape, list):
@@ -181,9 +190,10 @@ class BddDataset(Dataset):
 #         cv2.imwrite("label-{}.jpg".format(index), img_clone)
 
         for seg_class in seg_label:
-            _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 1, 255, cv2.THRESH_BINARY)
+            _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 0, 255, cv2.THRESH_BINARY)
+        # np.savetxt('seglabelroad_before', seg_label['road'])
     
-        return img, labels, seg_label, (h0, w0), (h,w), data['image']
+        return img, labels, seg_label, (h0, w0), (h,w), None # data['image']
 
     def load_mosaic(self, index):
     # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
@@ -270,18 +280,19 @@ class BddDataset(Dataset):
             else:
                 img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
             # TODO: multi-class seg with albumentations
-            # try:
-            #     new = self.albumentations_transform(image=img, mask=seg_label, mask0=lane_label,
-            #                                         bboxes=labels[:, 1:] if len(labels) else labels,
-            #                                         class_labels=labels[:, 0] if len(labels) else labels)
-            #     img = new['image']
-            #     labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])]) if len(labels) else labels
-            #     seg_label = new['mask']
-            #     lane_label = new['mask0']
-            # except ValueError:  # bbox have width or height == 0
-            #     pass
+                # try:
+                #     new = self.albumentations_transform(image=img, mask=seg_label['road'], mask0=seg_label['lane'],
+                #                                         bboxes=labels[:, 1:] if len(labels) else labels,
+                #                                         class_labels=labels[:, 0] if len(labels) else labels)
+                #     img = new['image']
+                #     labels = np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])]) if len(labels) else labels
+                #     seg_label['road'] = new['mask']
+                #     seg_label['lane'] = new['mask0']
+                # except ValueError:  # bbox have width or height == 0
+                #     pass
 
             # augmentation
+            # np.savetxt('seglabelroad_before_rp', seg_label['road'])
             combination = (img, seg_label)
             (img, seg_label), labels = random_perspective(
                 combination=combination,
@@ -295,6 +306,7 @@ class BddDataset(Dataset):
             augment_hsv(img, hgain=self.dataset['hsv_h'], sgain=self.dataset['hsv_s'], vgain=self.dataset['hsv_v'])
 
             # random left-right flip
+            # np.savetxt('seglabelroad_before_flip', seg_label['road'])
             if random.random() < self.dataset['fliplr']:
                 img = img[:, ::-1, :]
 
@@ -335,10 +347,10 @@ class BddDataset(Dataset):
         #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 3)
         # cv2.imwrite(data["image"].split("/")[-1], img)
 
-        (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=True,
+        # np.savetxt('seglabelroad_before_lb', seg_label['road'])
+        (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=False,
                                                              scaleup=self.is_train)
         shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling  
-        
         labels_app = np.array([])
         if len(labels):
             # update labels after letterbox
@@ -355,15 +367,27 @@ class BddDataset(Dataset):
 
         # print(img.shape)
         # img_copy = img.copy()
+        # np.savetxt('seglabelroad', seg_label['road'])
+        # print(np.count_nonzero(seg_label['road']))
+        # print(np.count_nonzero(seg_label['road'][seg_label['road']==114]))
         # img_copy[seg_label['road'] == 255] = (0, 255, 0)
+        # if seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)].any():
+        #     print(np.count_nonzero(seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]))
+        #     print(seg_label['road'][seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]])
+        # img_copy[seg_label['lane'] == 255] = (0, 0, 255)
+        # union = np.zeros(img.shape[:2], dtype=np.uint8)
+        # for seg_class in seg_label:
+        #     union |= seg_label[seg_class]
+        # background = 255 - union
         # cv2.imwrite('_copy.jpg', img_copy)
         # cv2.imwrite('_seg_road.jpg', seg_label['road'])
         # cv2.imwrite('_seg_lane.jpg', seg_label['lane'])
         # cv2.imwrite('_background.jpg', background)
 
         # for anno in labels_app:
-        #   x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
-        #   cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
+        #     print(anno)
+        #     x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
+        #     cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
         # cv2.imwrite('_box.jpg', img_copy)
         # exit()
         
@@ -382,16 +406,30 @@ class BddDataset(Dataset):
             # special treatment for lane-line of bdd100k for our dataset
             # since we increase lane-line from 2 to 8 pixels, we must take care of the overlap to other segmentation classes
             # e.g.: a pixel belongs to both road and lane-line, then we must prefer lane, or metrics would be wrong
+            # torchshow.save(seg_label['road'], path='/home/ctv.baonvh/new_hybridnets/HybridNets/_roadBEFORE.png', mode='grayscale')
             if 'lane' in seg_label:
                 for seg_class in seg_label:
                     if seg_class != 'lane': seg_label[seg_class] -= seg_label['lane']
+
+            # np.savetxt('multiclassroad', seg_label['road'])
+            # np.savetxt('multiclasslane', seg_label['lane'])
+            # torchshow.save(seg_label['road'], path='/home/ctv.baonvh/new_hybridnets/HybridNets/_road.png', mode='grayscale')
+            # torchshow.save(seg_label['lane'], path='/home/ctv.baonvh/new_hybridnets/HybridNets/_lane.png', mode='grayscale')
+                
+            # print(seg_label['road'][seg_label['road'] == -255])
+            # if seg_label['road'][np.logical_and(seg_label['road'] != 0, seg_label['road'] != 255)].any():
+                # print("FOUND WRONG")
+                # print([seg_label['road'][np.logical_and(seg_label['road'] != 0, seg_label['road'] != 255)]])
 
             segmentation = np.zeros(img.shape[:2], dtype=np.uint8)
             segmentation = self.Tensor(segmentation)
             segmentation.squeeze_(0)
             for seg_index, seg_class in enumerate(seg_label.values()):
                 segmentation[seg_class == 255] = seg_index + 1
-            
+
+            # torchshow.save(segmentation, path='_segmentationFULL.png')
+            # torchshow.save(img, path='_img.png')
+            # exit()
             # [H, W]
             # background = 0, road = 1, lane = 2
             # [0, 0, 0, 0]
@@ -458,7 +496,7 @@ class BddDataset(Dataset):
     @staticmethod
     def collate_fn(batch):
         img, paths, shapes, labels_app, segmentation = zip(*batch)
-        filenames = [file.split('/')[-1] for file in paths]
+        # filenames = [file.split('/')[-1] for file in paths]
         # print(len(labels_app))
         max_num_annots = max(label.size(0) for label in labels_app)
 
@@ -472,4 +510,4 @@ class BddDataset(Dataset):
 
         # print("ABC", seg1.size())
         return {'img': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
-                'filenames': filenames, 'shapes': shapes}
+                'filenames': None, 'shapes': shapes}

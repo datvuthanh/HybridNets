@@ -30,12 +30,12 @@ seg_list: ['road',
 seg_multilabel: false  # a pixel can belong to multiple labels (i.e. lane line + underlying road)
 
 dataset:
-  dataroot: ./datasets/bdd100k
-  labelroot: ./datasets/data2/zwt/bdd/bdd100k/labels/100k
+  dataroot: ../../HybridNets/datasets/bdd100k
+  labelroot: ../../HybridNets/datasets/data2/zwt/bdd/bdd100k/labels/100k
   segroot:
   # must be in correct order with seg_list
-  - ./datasets/bdd_seg_gt
-  - ./datasets/bdd_lane_gt
+  - ../../HybridNets/datasets/bdd_seg_gt
+  - ../../HybridNets/datasets/bdd_lane_gt
   test_set: val
   train_set: train
   org_img_size:
@@ -60,4 +60,4 @@ model:
   - 640
   - 384
 need_autoanchor: false
-pin_memory: false
+pin_memory: true

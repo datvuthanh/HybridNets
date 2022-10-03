@@ -15,9 +15,12 @@ from backbone import HybridNetsBackbone
 from utils.utils import get_last_weights, init_weights, boolean_string, \
     save_checkpoint, DataLoaderX, Params
 from hybridnets.dataset import BddDataset
+from hybridnets.custom_dataset import CustomDataset
 from hybridnets.autoanchor import run_anchor
 from hybridnets.model import ModelWithLoss
 from utils.constants import *
+from collections import OrderedDict
+from torchinfo import summary
 
 
 def get_args():
@@ -68,11 +71,15 @@ def get_args():
                         help='Confidence threshold in NMS')
     parser.add_argument('--iou_thres', type=float, default=0.6,
                         help='IoU threshold in NMS')
+    parser.add_argument('--amp', type=boolean_string, default=False,
+                        help='Automatic Mixed Precision training')
 
     args = parser.parse_args()
     return args
 
 def train(opt):
+    torch.backends.cudnn.benchmark = True
+    print("\nCUDNN VERSION: {}\n".format(torch.backends.cudnn.version()))
     params = Params(f'projects/{opt.project}.yml')
 
     if opt.num_gpus == 0:
@@ -107,7 +114,7 @@ def train(opt):
     training_generator = DataLoaderX(
         train_dataset,
         batch_size=opt.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=opt.num_workers,
         pin_memory=params.pin_memory,
         collate_fn=BddDataset.collate_fn
@@ -159,6 +166,7 @@ def train(opt):
 
         try:
             ckpt = torch.load(weights_path)
+            # new_weight = OrderedDict((k[6:], v) for k, v in ckpt['model'].items())
             model.load_state_dict(ckpt.get('model', ckpt), strict=False)
         except RuntimeError as e:
             print(f'[Warning] Ignoring {e}')
@@ -185,11 +193,14 @@ def train(opt):
         model.bifpndecoder.requires_grad_(False)
         model.segmentation_head.requires_grad_(False)
         print('[Info] freezed segmentation head')
+    #summary(model, (1, 3, 384, 640), device='cpu')
 
     writer = SummaryWriter(opt.log_path + f'/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}/')
 
     # wrap the model with loss function, to reduce the memory usage on gpu0 and speedup
     model = ModelWithLoss(model, debug=opt.debug)
+
+    model = model.to(memory_format=torch.channels_last)
 
     if opt.num_gpus > 0:
         model = model.cuda()
@@ -199,8 +210,10 @@ def train(opt):
     else:
         optimizer = torch.optim.SGD(model.parameters(), opt.lr, momentum=0.9, nesterov=True)
     # print(ckpt)
-    if opt.load_weights is not None and ckpt.get('optimizer', None):
-        optimizer.load_state_dict(ckpt['optimizer'])
+    scaler = torch.cuda.amp.GradScaler(enabled=opt.amp)
+    # if opt.load_weights is not None and ckpt.get('optimizer', None):
+        # scaler.load_state_dict(ckpt['scaler'])
+        # optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -215,16 +228,16 @@ def train(opt):
     num_iter_per_epoch = len(training_generator)
     try:
         for epoch in range(opt.num_epochs):
-            last_epoch = step // num_iter_per_epoch
-            if epoch < last_epoch:
-                continue
+            # last_epoch = step // num_iter_per_epoch
+            # if epoch < last_epoch:
+            #     continue
 
             epoch_loss = []
             progress_bar = tqdm(training_generator, ascii=True)
             for iter, data in enumerate(progress_bar):
-                if iter < step - last_epoch * num_iter_per_epoch:
-                    progress_bar.update()
-                    continue
+                # if iter < step - last_epoch * num_iter_per_epoch:
+                #     progress_bar.update()
+                #     continue
                 try:
                     imgs = data['img']
                     annot = data['annot']
@@ -232,25 +245,32 @@ def train(opt):
 
                     if opt.num_gpus == 1:
                         # if only one gpu, just send it to cuda:0
-                        imgs = imgs.cuda()
+                        imgs = imgs.to(device="cuda", memory_format=torch.channels_last)
                         annot = annot.cuda()
                         seg_annot = seg_annot.cuda()
 
-                    optimizer.zero_grad()
-                    cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
-                                                                                                            seg_annot,
-                                                                                                            obj_list=params.obj_list)
-                    cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0)
-                    reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0)
-                    seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0)
+                    optimizer.zero_grad(set_to_none=True)
+                    with torch.cuda.amp.autocast(enabled=opt.amp):
+                        cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation = model(imgs, annot,
+                                                                                                                seg_annot,
+                                                                                                                obj_list=params.obj_list)
+                        cls_loss = cls_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+                        reg_loss = reg_loss.mean() if not opt.freeze_det else torch.tensor(0, device="cuda")
+                        seg_loss = seg_loss.mean() if not opt.freeze_seg else torch.tensor(0, device="cuda")
 
-                    loss = cls_loss + reg_loss + seg_loss
+                        loss = cls_loss + reg_loss + seg_loss
+                        
                     if loss == 0 or not torch.isfinite(loss):
                         continue
 
-                    loss.backward()
+                    scaler.scale(loss).backward()
+
+                    # Don't have to clip grad norm, since our gradients didn't explode anywhere in the training phases
+                    # This worsens the metrics
+                    # scaler.unscale_(optimizer)
                     # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-                    optimizer.step()
+                    scaler.step(optimizer)
+                    scaler.update()
 
                     epoch_loss.append(float(loss))
 
@@ -282,7 +302,7 @@ def train(opt):
 
             if epoch % opt.val_interval == 0:
                 best_fitness, best_loss, best_epoch = val(model, val_generator, params, opt, seg_mode, is_training=True,
-                                                          optimizer=optimizer, writer=writer, epoch=epoch, step=step, 
+                                                          optimizer=optimizer, scaler=scaler, writer=writer, epoch=epoch, step=step, 
                                                           best_fitness=best_fitness, best_loss=best_loss, best_epoch=best_epoch)
     except KeyboardInterrupt:
         save_checkpoint(model, opt.saved_path, f'hybridnets-d{opt.compound_coef}_{epoch}_{step}.pth')

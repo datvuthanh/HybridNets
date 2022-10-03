@@ -12,6 +12,9 @@ import os
 from torchvision import transforms
 import argparse
 from utils.constants import *
+from collections import OrderedDict
+from torch.nn import functional as F
+
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
@@ -108,7 +111,8 @@ else:
 x = x.to(torch.float16 if use_cuda and use_float16 else torch.float32)
 # print(x.shape)
 weight = torch.load(weight, map_location='cuda' if use_cuda else 'cpu')
-weight_last_layer_seg = weight.get('model', weight)['segmentation_head.0.weight']
+#new_weight = OrderedDict((k[6:], v) for k, v in weight['model'].items())
+weight_last_layer_seg = weight['segmentation_head.0.weight']
 if weight_last_layer_seg.size(0) == 1:
     seg_mode = BINARY_MODE
 else:
@@ -120,7 +124,7 @@ print("DETECTED SEGMENTATION MODE FROM WEIGHT AND PROJECT FILE:", seg_mode)
 model = HybridNetsBackbone(compound_coef=compound_coef, num_classes=len(obj_list), ratios=eval(anchors_ratios),
                            scales=eval(anchors_scales), seg_classes=len(seg_list), backbone_name=args.backbone,
                            seg_mode=seg_mode)
-model.load_state_dict(weight.get('model', weight))
+model.load_state_dict(weight)
 
 model.requires_grad_(False)
 model.eval()
@@ -137,14 +141,15 @@ with torch.no_grad():
     seg_mask_list = []
     # (B, C, W, H) -> (B, W, H)
     if seg_mode == BINARY_MODE:
-        seg_mask = torch.where(seg >= 0.5, 1, 0)
+        seg_mask = torch.where(seg >= 0, 1, 0)
+        # print(torch.count_nonzero(seg_mask))
         seg_mask.squeeze_(1)
         seg_mask_list.append(seg_mask)
     elif seg_mode == MULTICLASS_MODE:
         _, seg_mask = torch.max(seg, 1)
         seg_mask_list.append(seg_mask)
     else:
-        seg_mask_list = [torch.where(seg[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
+        seg_mask_list = [torch.where(torch.sigmoid(seg)[:, i, ...] >= 0.5, 1, 0) for i in range(seg.size(1))]
         # but remove background class from the list
         seg_mask_list.pop(0)
     # (B, W, H) -> (W, H)
