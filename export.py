@@ -22,11 +22,11 @@ parser.add_argument('--width', type=int, default=640)
 parser.add_argument('--height', type=int, default=384)
 args = parser.parse_args()
 
-device = 'cuda' args.cuda else 'cpu'
+device = 'cuda' if args.cuda else 'cpu'
 print('device', device)
 params = Params(f'projects/{args.project}.yml')
 weight = args.load_weights
-weight = torch.load(weight, map_location='cuda' if use_cuda else 'cpu')
+weight = torch.load(weight, map_location=device)
 if weight.get("optimizer"):  # strip optimizer
     weight = OrderedDict((k[6:], v) for k, v in weight['model'].items())
 weight_last_layer_seg = weight['segmentation_head.0.weight']
@@ -43,7 +43,7 @@ model = HybridNetsBackbone(num_classes=len(params.obj_list),
                            ratios=eval(params.anchors_ratios),
                            scales=eval(params.anchors_scales),
                            seg_classes=len(params.seg_list),
-                           backbone_name=opt.backbone,
+                           backbone_name=args.backbone,
                            seg_mode=seg_mode,
                            onnx_export=True)
 
@@ -58,5 +58,5 @@ torch.onnx.export(model,
                   'weights/hybridnets_{}x{}.onnx'.format(args.height, args.width),
                   opset_version=11,
                   input_names=['input'],
-		              output_names=['regression', 'classification', 'segmentation'])
+		  output_names=['regression', 'classification', 'segmentation'])
 print("ONXX done")
