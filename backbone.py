@@ -87,12 +87,11 @@ class HybridNetsBackbone(nn.Module):
                 weights='imagenet',
             )
 
-        if not onnx_export:
-            self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],
-                                   pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
-                                   onnx_export=onnx_export,
-                                   **kwargs)
-        else:
+        self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],
+                               pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
+                               onnx_export=onnx_export,
+                               **kwargs)
+        if onnx_export:
             ## TODO: timm
             self.encoder.set_swish(memory_efficient=False)
     
@@ -121,9 +120,9 @@ class HybridNetsBackbone(nn.Module):
         
         regression = self.regressor(features)
         classification = self.classifier(features)
+        anchors = self.anchors(inputs, inputs.dtype)
         
         if not self.onnx_export:
-            anchors = self.anchors(inputs, inputs.dtype)
             return features, regression, classification, anchors, segmentation
         else:
             return regression, classification, segmentation
