@@ -70,6 +70,7 @@ HybridNets is an end2end perception network for multi-tasks. Our work focused on
 ```bash
 HybridNets
 │   backbone.py                   # Model configuration
+|   export.py                     # UPDATED 10/2022: onnx weight with accompanying .npy anchors
 │   hubconf.py                    # Pytorch Hub entrypoint
 │   hybridnets_test.py            # Image inference
 │   hybridnets_test_videos.py     # Video inference
@@ -217,6 +218,11 @@ That being said, there are multiple ways to circumvent this problem, choose the 
 - Train with `python train.py --cal_map False` to not calculate metrics when validating. This option will only print validation losses. When the losses seem to flatten and the weather is nice, rent a high-RAM instance to validate the best weight with `python val.py -w checkpoints/xxx_best.pth`. We actually did this to save on cost.
 - Reduce the confidence threshold with `python train.py --conf_thres 0.5` or `python val.py --conf_thres 0.5`, depending on your application and end goals. You don't have to get best recall unless you're either helping us by experimenting :smiling_face_with_three_hearts: or competing with us :angry:.
 
+#### 4) Export
+```bash
+python export.py -w checkpoints/weight.pth --width 640 --height 384
+```
+This automatically creates an ONNX weight and an `anchor_{H}_{W}.npy` file to use in postprocessing. Refer to the ROS section for usage example.
 
 ## Training Tips
 ### Anchors :anchor:
