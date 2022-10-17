@@ -9,17 +9,8 @@ from hybridnets.model import SegmentationHead
 from encoders import get_encoder
 from utils.constants import *
 
-
 class HybridNetsBackbone(nn.Module):
-    def __init__(
-        self,
-        num_classes=80,
-        compound_coef=0,
-        seg_classes=1,
-        backbone_name=None,
-        seg_mode=MULTICLASS_MODE,
-        **kwargs
-    ):
+    def __init__(self, num_classes=80, compound_coef=0, seg_classes=1, backbone_name=None, seg_mode=MULTICLASS_MODE, **kwargs):
         super(HybridNetsBackbone, self).__init__()
         self.compound_coef = compound_coef
 
@@ -32,21 +23,9 @@ class HybridNetsBackbone(nn.Module):
         self.input_sizes = [512, 640, 768, 896, 1024, 1280, 1280, 1536, 1536]
         self.box_class_repeats = [3, 3, 3, 4, 4, 4, 5, 5, 5]
         self.pyramid_levels = [5, 5, 5, 5, 5, 5, 5, 5, 6]
-        self.anchor_scale = [
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-            1.25,
-        ]
-        self.aspect_ratios = kwargs.get("ratios", [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
-        self.num_scales = len(
-            kwargs.get("scales", [2**0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
-        )
+        self.anchor_scale = [1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,]
+        self.aspect_ratios = kwargs.get('ratios', [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
+        self.num_scales = len(kwargs.get('scales', [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]))
         conv_channel_coef = {
             # the channels of P3/P4/P5.
             0: [256, 512, 1024],
@@ -59,77 +38,59 @@ class HybridNetsBackbone(nn.Module):
             7: [72, 200, 576],
             8: [80, 224, 640],
         }
-
-        if self.compound_coef == 0:
-            p2_shape = 128
+        
+        if self.compound_coef==0:
+            p2_shape=128
         else:
-            p2_shape = 32
+            p2_shape=32
 
         num_anchors = len(self.aspect_ratios) * self.num_scales
 
-        if backbone_name:
-            self.encoder = timm.create_model(
-                backbone_name,
-                pretrained=True,
-                features_only=True,
-                out_indices=(1, 2, 3, 4),
-            )  # P3,P4,P5
-        else:
-            # EfficientNet_Pytorch
-            self.encoder = get_encoder(
-                "tu-hrnet_w18",
-                in_channels=3,
-                depth=5,
-                weights=None,
-            )
-
         self.bifpn = nn.Sequential(
-            *[
-                BiFPN(
-                    self.fpn_num_filters[self.compound_coef],
+            *[BiFPN(self.fpn_num_filters[self.compound_coef],
                     conv_channel_coef[compound_coef],
                     True if _ == 0 else False,
                     attention=True if compound_coef < 6 else False,
-                    use_p8=compound_coef > 7,
-                )
-                for _ in range(self.fpn_cell_repeats[compound_coef])
-            ]
-        )
+                    use_p8=compound_coef > 7)
+              for _ in range(self.fpn_cell_repeats[compound_coef])])
 
         self.num_classes = num_classes
-        self.regressor = Regressor(
-            in_channels=self.fpn_num_filters[self.compound_coef],
-            num_anchors=num_anchors,
-            num_layers=self.box_class_repeats[self.compound_coef],
-            pyramid_levels=self.pyramid_levels[self.compound_coef],
-        )
+        self.regressor = Regressor(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
+                                   num_layers=self.box_class_repeats[self.compound_coef],
+                                   pyramid_levels=self.pyramid_levels[self.compound_coef])
 
-        """Modified by Dat Vu"""
+        '''Modified by Dat Vu'''
         # self.decoder = DecoderModule()
-        self.bifpndecoder = BiFPNDecoder(
-            pyramid_channels=self.fpn_num_filters[self.compound_coef], p2_shape=p2_shape
-        )
+        self.bifpndecoder = BiFPNDecoder(pyramid_channels=self.fpn_num_filters[self.compound_coef],p2_shape=p2_shape)
 
         self.segmentation_head = SegmentationHead(
-            self.encoder.pre_stage_channels, num_classes
+            in_channels=64,
+            out_channels=1 if self.seg_mode == BINARY_MODE else self.seg_classes+1,
+            activation='softmax2d' if self.seg_mode == MULTICLASS_MODE else 'sigmoid',
+            kernel_size=1,
+            upsampling=4,
         )
 
-        self.classifier = Classifier(
-            in_channels=self.fpn_num_filters[self.compound_coef],
-            num_anchors=num_anchors,
-            num_classes=num_classes,
-            num_layers=self.box_class_repeats[self.compound_coef],
-            pyramid_levels=self.pyramid_levels[self.compound_coef],
-        )
+        self.classifier = Classifier(in_channels=self.fpn_num_filters[self.compound_coef], num_anchors=num_anchors,
+                                     num_classes=num_classes,
+                                     num_layers=self.box_class_repeats[self.compound_coef],
+                                     pyramid_levels=self.pyramid_levels[self.compound_coef])
 
-        self.anchors = Anchors(
-            anchor_scale=self.anchor_scale[compound_coef],
-            pyramid_levels=(
-                torch.arange(self.pyramid_levels[self.compound_coef]) + 3
-            ).tolist(),
-            **kwargs
-        )
+        self.anchors = Anchors(anchor_scale=self.anchor_scale[compound_coef],
+                               pyramid_levels=(torch.arange(self.pyramid_levels[self.compound_coef]) + 3).tolist(),
+                               **kwargs)
 
+        if backbone_name:
+            self.encoder = timm.create_model(backbone_name, pretrained=True, features_only=True, out_indices=(1,2,3,4))  # P3,P4,P5
+        else:
+            # EfficientNet_Pytorch
+            self.encoder = get_encoder(
+                'tu-hrnet_w18',
+                in_channels=3,
+                depth=5,
+                weights='imagenet',
+            )
+    
         self.initialize_decoder(self.bifpndecoder)
         self.initialize_head(self.segmentation_head)
         self.initialize_decoder(self.bifpn)
@@ -144,22 +105,23 @@ class HybridNetsBackbone(nn.Module):
 
         # p1, p2, p3, p4, p5 = self.backbone_net(inputs)
         p2, p3, p4, p5 = self.encoder(inputs)[-4:]  # self.backbone_net(inputs)
+
         features = (p3, p4, p5)
 
         features = self.bifpn(features)
+        
+        p3,p4,p5,p6,p7 = features
+        
+        outputs = self.bifpndecoder((p2,p3,p4,p5,p6,p7))
 
-        p3, p4, p5, p6, p7 = features
-
-        outputs = self.bifpndecoder((p2, p3, p4, p5, p6, p7))
-
-        segmentation = self.segmentation_head(p5)
-
+        segmentation = self.segmentation_head(outputs)
+        
         regression = self.regressor(features)
         classification = self.classifier(features)
         anchors = self.anchors(inputs, inputs.dtype)
 
         return features, regression, classification, anchors, segmentation
-
+    
     def initialize_decoder(self, module):
         for m in module.modules():
 
@@ -176,6 +138,7 @@ class HybridNetsBackbone(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+
 
     def initialize_head(self, module):
         for m in module.modules():

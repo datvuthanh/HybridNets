@@ -57,7 +57,7 @@ dataset:
   mixup: 0.0  # if set, recommended at 0.1
 model:
   image_size:
-  - 320
-  - 128
-need_autoanchor: true
+  - 640
+  - 384
+need_autoanchor: false
 pin_memory: false
