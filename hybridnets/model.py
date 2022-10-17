@@ -1055,7 +1055,7 @@ class Activation(nn.Module):
         return self.activation(x)
 
 
-class SegmentationHead(nn.Module):
+class SegmentationHead(nn.module):
     def __init__(self, pre_stage_channels, num_classes):
         super().__init__()
         self.ALIGN_CORNERS = True
