@@ -91,6 +91,9 @@ HybridNets
 ├───projects
 │       bdd100k.yml               # Project configuration
 │
+├───ros                           # C++ ROS Package for path planning
+│       ...
+│
 └───utils
     |   constants.py
     │   plot.py                   # Draw bounding box
