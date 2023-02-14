@@ -147,9 +147,9 @@ Update your dataset paths in `projects/your_project_name.yml`.
 
 For BDD100K: 
 - [imgs](https://bdd-data.berkeley.edu/)
-- [det_annot](https://drive.google.com/file/d/1d5osZ83rLwda7mfT3zdgljDiQO3f9B5M/view)
-- [da_seg_annot](https://drive.google.com/file/d/1yNYLtZ5GVscx7RzpOd8hS7Mh7Rs6l3Z3/view)
-- [ll_seg_annot](https://drive.google.com/file/d/1BPsyAjikEM9fqsVNMIygvdVVPrmK1ot-/view)
+- [det_annot](https://drive.google.com/file/d/1QttvnPI1srmlHp86V-waD3Mn5lT9f4ky/view?usp=sharing)
+- [da_seg_annot](https://drive.google.com/file/d/1FDP7ojolsRu_1z1CXoWUousqeqOdmS68/view?usp=sharing)
+- [ll_seg_annot](https://drive.google.com/file/d/1jvuSeK-Oofs4OWPL_FiBnTlMYHEAQYUC/view?usp=sharing)
 
 ### Training
 #### 1) Edit or create a new project configuration, using bdd100k.yml as a template. Augmentation params are here.
