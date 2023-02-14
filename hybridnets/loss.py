@@ -106,36 +106,12 @@ class FocalLoss(nn.Module):
             
             positive_indices = torch.full_like(IoU_max,False,dtype=torch.bool) #torch.ge(IoU_max, 0.2) 
                         
-            tensorA = (assigned_annotations[:, 2] - assigned_annotations[:, 0]) * (assigned_annotations[:, 3] - assigned_annotations[:, 1]) > 10 * 10
-#             for idx,iou in enumerate(IoU_max):
-#                 if tensorA[idx]: # Set iou threshold = 0.5
-#                     if iou >= 0.5:
-#                         positive_indices[idx] = True
-# #                         targets[idx,:] = True
-# #                     else:
-# #                         positive_indices[idx] = False
-#                 else:
-#                     if iou >= 0.15:
-#                         positive_indices[idx] = True
-# #                     else:
-# #                         positive_indices[idx] = False              
-                                
-# #             targets[torch.lt(IoU_max, 0.4), :] = 0
+            smooth_region = (assigned_annotations[:, 2] - assigned_annotations[:, 0]) * (assigned_annotations[:, 3] - assigned_annotations[:, 1]) > 10 * 10
 
-            
-            positive_indices[torch.logical_or(torch.logical_and(tensorA,IoU_max >= 0.5),torch.logical_and(~tensorA,IoU_max >= 0.15))] = True
+            positive_indices[torch.logical_or(torch.logical_and(smooth_region,IoU_max >= 0.5),torch.logical_and(~smooth_region,IoU_max >= 0.15))] = True
 
             num_positive_anchors = positive_indices.sum()
-            
-#             for box in assigned_annotations[positive_indices, :]:
-#                 xmin,ymin,xmax,ymax, cls = box
-#                 print("WIDTH HEIGHT:", (xmax-xmin),"\t", (ymax-ymin))
-#             for box in bbox_annotation:
-#                 xmin,ymin,xmax,ymax, cls = box
-#                 print("111 WIDTH HEIGHT:", (xmax-xmin),"\t", (ymax-ymin))
-            
-
-#             targets[positive_indices, :] = 0
+           
             targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
     
             alpha_factor = torch.ones_like(targets) * alpha
@@ -337,8 +313,6 @@ class FocalLossSeg(_Loss):
             loss = self.focal_loss_fn(y_pred, y_true)
 
         elif self.mode == MULTICLASS_MODE:
-            # print(y_true.shape)
-            # print(y_pred.shape)
             num_classes = y_pred.size(1)
             loss = 0
 
@@ -349,9 +323,6 @@ class FocalLossSeg(_Loss):
             for cls in range(num_classes):
                 cls_y_true = (y_true == cls).long()
                 cls_y_pred = y_pred[:, cls, ...]
-                # print(cls_y_true.shape)
-                # print(cls_y_pred.shape)
-                # exit()
 
                 if self.ignore_index is not None:
                     cls_y_true = cls_y_true[not_ignored]
