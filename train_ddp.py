@@ -98,28 +98,7 @@ class ModelWithLoss(nn.Module):
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
 
-            # Visualization
-            # seg_0 = seg_annot[0]
-            # # print('bbb', seg_0.shape)
-            # seg_0 = torch.argmax(seg_0, dim = 0)
-            # # print('before', seg_0.shape)
-            # seg_0 = seg_0.cpu().numpy()
-            #     #.transpose(1, 2, 0)
-            # print(seg_0.shape)
-            #
-            # anh = np.zeros((384,640,3))
-            #
-            # anh[seg_0 == 0] = (255,0,0)
-            # anh[seg_0 == 1] = (0,255,0)
-            # anh[seg_0 == 2] = (0,0,255)
-            #
-            # anh = np.uint8(anh)
-            #
-            # cv2.imwrite('anh.jpg',anh)
-
         seg_loss = tversky_loss + 1 * focal_loss
-        # print("TVERSKY", tversky_loss)
-        # print("FOCAL", focal_loss)
 
         return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
@@ -217,9 +196,6 @@ def train(rank, opt):
             momentum=0.9,
             nesterov=True
         )
-    # print(ckpt)
-    # if opt.load_weights is not None and ckpt.get('optimizer', None):
-    #     optimizer.load_state_dict(ckpt['optimizer'])
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -265,20 +241,14 @@ def train(rank, opt):
                         continue
 
                     loss.backward()
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
                     optimizer.step()
 
                     epoch_loss.append(float(loss))
                     
-                    # print(3)
                     dist.reduce(loss, 0, op=dist.ReduceOp.AVG)
-                    # print(4)
                     dist.reduce(cls_loss, 0, op=dist.ReduceOp.AVG)
-                    # print(5)
-
                     dist.reduce(reg_loss, 0, op=dist.ReduceOp.AVG)
                     dist.reduce(seg_loss, 0, op=dist.ReduceOp.AVG)
-                    # print(6)
 
 
 
