@@ -21,13 +21,6 @@ def check_anchor_order(anchors, anchor_grid, stride):
 
 
 def run_anchor(logger, dataset, thr=4.0, imgsz=640):
-    # default_anchors = [[3, 9, 5, 11, 4, 20], [7, 18, 6, 39, 12, 31], [19, 50, 38, 81, 68, 157]]
-    # nl = len(default_anchors)  # number of detection layers 3
-    # na = len(default_anchors[0]) // 2  # number of anchors 3
-    # anchors = torch.tensor(default_anchors,
-    #                        device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    #                        ).float().view(nl, -1, 2)
-    # anchor_num = na * nl
     anchor_num = 9
     new_anchors = kmean_anchors(dataset, n=anchor_num, img_size=imgsz, thr=thr, gen=1000, verbose=False)
 
@@ -117,18 +110,6 @@ def kmean_anchors(path='./data/coco128.yaml', n=9, img_size=640, thr=4.0, gen=10
     wh = torch.tensor(wh, dtype=torch.float32)  # filtered
     wh0 = torch.tensor(wh0, dtype=torch.float32)  # unfiltered
     k = print_results(k)
-
-    # Plot
-    # k, d = [None] * 20, [None] * 20
-    # for i in tqdm(range(1, 21)):
-    #     k[i-1], d[i-1] = kmeans(wh / s, i)  # points, mean distance
-    # fig, ax = plt.subplots(1, 2, figsize=(14, 7), tight_layout=True)
-    # ax = ax.ravel()
-    # ax[0].plot(np.arange(1, 21), np.array(d) ** 2, marker='.')
-    # fig, ax = plt.subplots(1, 2, figsize=(14, 7))  # plot wh
-    # ax[0].hist(wh[wh[:, 0]<100, 0],400)
-    # ax[1].hist(wh[wh[:, 1]<100, 1],400)
-    # fig.savefig('wh.png', dpi=200)
 
     # Evolve
     npr = np.random
