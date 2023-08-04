@@ -107,8 +107,6 @@ class CustomDataset(BddDataset):
                         print(result)
                     cls_id = self.obj_list.index(category)
                     gt.append([cls_id, x, y, w, h])
-            # print(gt)
-            # torchshow.save(seg_label['road'], path='_roadfromb4.png')
 
             gt = np.array(gt)
 
@@ -118,28 +116,7 @@ class CustomDataset(BddDataset):
                 'label': gt,
             }
             # Since seg_path is a dynamic dict
-            # rec = {**rec, **seg_path}
             rec = {**rec, **seg_label}
-
-            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
-            # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # for label in gt:
-            #     # print(label[1])
-            #     x1 = label[1] - label[3] / 2
-            #     x1 *= 1280
-            #     x1 = int(x1)
-            #     # print(x1)
-            #     x2 = label[1] + label[3] / 2
-            #     x2 *= 1280
-            #     x2 = int(x2)
-            #     y1 = label[2] - label[4] / 2
-            #     y1 *= 720
-            #     y1 = int(y1)
-            #     y2 = label[2] + label[4] / 2
-            #     y2 *= 720
-            #     y2 = int(y2)
-            #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
 
             gt_db.append(rec)
         print('database build finish')
@@ -181,12 +158,6 @@ class CustomDataset(BddDataset):
             labels[:, 3] = (det_label[:, 1] + det_label[:, 3] / 2) / w0 * w
             labels[:, 4] = (det_label[:, 2] + det_label[:, 4] / 2) / h0 * h
 
-#         img_clone = img.copy()
-#         for anno in labels:
-#           x1,y1,x2,y2 = [int(x) for x in anno[1:5]]
-#           img_clone = cv2.rectangle(img_clone, (x1,y1), (x2,y2), (255,0,0), 1)
-#         cv2.imwrite("label-{}.jpg".format(index), img_clone)
-
         for seg_class in seg_label:
             _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 0, 255, cv2.THRESH_BINARY)
         # np.savetxt('seglabelroad_before', seg_label['road'])
@@ -197,8 +168,6 @@ class CustomDataset(BddDataset):
     @staticmethod
     def collate_fn(batch):
         img, paths, shapes, labels_app, segmentation = zip(*batch)
-        # filenames = [file.split('/')[-1] for file in paths]
-        # print(len(labels_app))
         max_num_annots = max(label.size(0) for label in labels_app)
 
         if max_num_annots > 0:
@@ -209,6 +178,5 @@ class CustomDataset(BddDataset):
         else:
             annot_padded = torch.ones((len(labels_app), 1, 5)) * -1
 
-        # print("ABC", seg1.size())
         return {'img': torch.stack(img, 0), 'annot': annot_padded, 'segmentation': torch.stack(segmentation, 0),
                 'filenames': None, 'shapes': shapes}
