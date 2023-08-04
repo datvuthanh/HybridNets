@@ -113,26 +113,6 @@ class BddDataset(Dataset):
             # Since seg_path is a dynamic dict
             rec = {**rec, **seg_path}
 
-            # img = cv2.imread(image_path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_UNCHANGED)
-            # # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            # for label in gt:
-            #     # print(label[1])
-            #     x1 = label[1] - label[3] / 2
-            #     x1 *= 1280
-            #     x1 = int(x1)
-            #     # print(x1)
-            #     x2 = label[1] + label[3] / 2
-            #     x2 *= 1280
-            #     x2 = int(x2)
-            #     y1 = label[2] - label[4] / 2
-            #     y1 *= 720
-            #     y1 = int(y1)
-            #     y2 = label[2] + label[4] / 2
-            #     y2 *= 720
-            #     y2 = int(y2)
-            #     img = cv2.rectangle(img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            # cv2.imwrite('gt/{}'.format(image_path.split('/')[-1]), img)
-
             gt_db.append(rec)
         print('database build finish')
         return gt_db
@@ -159,7 +139,6 @@ class BddDataset(Dataset):
         seg_label = OrderedDict()
         for seg_class in self.seg_list:
             seg_label[seg_class] = cv2.imread(data[seg_class], 0)
-            # seg_label[seg_class] = data[seg_class]
 
         resized_shape = self.inputsize
         if isinstance(resized_shape, list):
@@ -182,12 +161,6 @@ class BddDataset(Dataset):
             labels[:, 2] = (det_label[:, 2] - det_label[:, 4] / 2) * h # pad height
             labels[:, 3] = (det_label[:, 1] + det_label[:, 3] / 2) * w
             labels[:, 4] = (det_label[:, 2] + det_label[:, 4] / 2) * h
-
-#         img_clone = img.copy()
-#         for anno in labels:
-#           x1,y1,x2,y2 = [int(x) for x in anno[1:5]]
-#           img_clone = cv2.rectangle(img_clone, (x1,y1), (x2,y2), (255,0,0), 1)
-#         cv2.imwrite("label-{}.jpg".format(index), img_clone)
 
         for seg_class in seg_label:
             _, seg_label[seg_class] = cv2.threshold(seg_label[seg_class], 0, 255, cv2.THRESH_BINARY)
@@ -292,7 +265,6 @@ class BddDataset(Dataset):
                 #     pass
 
             # augmentation
-            # np.savetxt('seglabelroad_before_rp', seg_label['road'])
             combination = (img, seg_label)
             (img, seg_label), labels = random_perspective(
                 combination=combination,
@@ -305,8 +277,6 @@ class BddDataset(Dataset):
             )
             augment_hsv(img, hgain=self.dataset['hsv_h'], sgain=self.dataset['hsv_s'], vgain=self.dataset['hsv_v'])
 
-            # random left-right flip
-            # np.savetxt('seglabelroad_before_flip', seg_label['road'])
             if random.random() < self.dataset['fliplr']:
                 img = img[:, ::-1, :]
 
@@ -341,12 +311,6 @@ class BddDataset(Dataset):
         else:
             img, labels, seg_label, (h0, w0), (h, w), path = self.load_image(idx)
 
-        # for anno in labels:
-        #   x1, y1, x2, y2 = [int(x) for x in anno[1:5]]
-        #   print(x1,y1,x2,y2)
-        #   cv2.rectangle(img, (x1,y1), (x2,y2), (0,0,255), 3)
-        # cv2.imwrite(data["image"].split("/")[-1], img)
-
         # np.savetxt('seglabelroad_before_lb', seg_label['road'])
         (img, seg_label), ratio, pad = letterbox((img, seg_label), (self.inputsize[1], self.inputsize[0]), auto=False,
                                                              scaleup=self.is_train)
@@ -364,43 +328,11 @@ class BddDataset(Dataset):
             labels_app[:, 4] = labels[:, 0]
 
         img = np.ascontiguousarray(img)
-
-        # print(img.shape)
-        # img_copy = img.copy()
-        # np.savetxt('seglabelroad', seg_label['road'])
-        # print(np.count_nonzero(seg_label['road']))
-        # print(np.count_nonzero(seg_label['road'][seg_label['road']==114]))
-        # img_copy[seg_label['road'] == 255] = (0, 255, 0)
-        # if seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)].any():
-        #     print(np.count_nonzero(seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]))
-        #     print(seg_label['road'][seg_label['road'][np.logical_and(seg_label['road'] > 0, seg_label['road'] < 255)]])
-        # img_copy[seg_label['lane'] == 255] = (0, 0, 255)
-        # union = np.zeros(img.shape[:2], dtype=np.uint8)
-        # for seg_class in seg_label:
-        #     union |= seg_label[seg_class]
-        # background = 255 - union
-        # cv2.imwrite('_copy.jpg', img_copy)
-        # cv2.imwrite('_seg_road.jpg', seg_label['road'])
-        # cv2.imwrite('_seg_lane.jpg', seg_label['lane'])
-        # cv2.imwrite('_background.jpg', background)
-
-        # for anno in labels_app:
-        #     print(anno)
-        #     x1, y1, x2, y2 = [int(x) for x in anno[anno != -1][:4]]
-        #     cv2.rectangle(img_copy, (x1,y1), (x2,y2), (0,0,255), 1)
-        # cv2.imwrite('_box.jpg', img_copy)
-        # exit()
         
         if self.seg_mode == BINARY_MODE:
             for seg_class in seg_label:
                 # technically, the for-loop only goes once
                 segmentation = self.Tensor(seg_label[seg_class])
-            
-            # [1, H, W]
-            # road [0, 0, 0, 0]
-            #      [0, 1, 1, 0]
-            #      [0, 1, 1, 0]
-            #      [1, 1, 1, 1]
 
         elif self.seg_mode == MULTICLASS_MODE:
             # special treatment for lane-line of bdd100k for our dataset
@@ -411,26 +343,12 @@ class BddDataset(Dataset):
                 for seg_class in seg_label:
                     if seg_class != 'lane': seg_label[seg_class] -= seg_label['lane']
 
-            # np.savetxt('multiclassroad', seg_label['road'])
-            # np.savetxt('multiclasslane', seg_label['lane'])
-            # torchshow.save(seg_label['road'], path='/home/ctv.baonvh/new_hybridnets/HybridNets/_road.png', mode='grayscale')
-            # torchshow.save(seg_label['lane'], path='/home/ctv.baonvh/new_hybridnets/HybridNets/_lane.png', mode='grayscale')
-                
-            # print(seg_label['road'][seg_label['road'] == -255])
-            # if seg_label['road'][np.logical_and(seg_label['road'] != 0, seg_label['road'] != 255)].any():
-                # print("FOUND WRONG")
-                # print([seg_label['road'][np.logical_and(seg_label['road'] != 0, seg_label['road'] != 255)]])
-
             segmentation = np.zeros(img.shape[:2], dtype=np.uint8)
             segmentation = self.Tensor(segmentation)
             segmentation.squeeze_(0)
             for seg_index, seg_class in enumerate(seg_label.values()):
                 segmentation[seg_class == 255] = seg_index + 1
 
-            # torchshow.save(segmentation, path='_segmentationFULL.png')
-            # torchshow.save(img, path='_img.png')
-            # exit()
-            # [H, W]
             # background = 0, road = 1, lane = 2
             # [0, 0, 0, 0]
             # [2, 1, 1, 2]
