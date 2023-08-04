@@ -33,29 +33,7 @@ class ModelWithLoss(nn.Module):
             tversky_loss = self.seg_criterion1(segmentation, seg_annot)
             focal_loss = self.seg_criterion2(segmentation, seg_annot)
 
-            # Visualization
-            # seg_0 = seg_annot[0]
-            # # print('bbb', seg_0.shape)
-            # seg_0 = torch.argmax(seg_0, dim = 0)
-            # # print('before', seg_0.shape)
-            # seg_0 = seg_0.cpu().numpy()
-            #     #.transpose(1, 2, 0)
-            # print(seg_0.shape)
-            #
-            # anh = np.zeros((384,640,3))
-            #
-            # anh[seg_0 == 0] = (255,0,0)
-            # anh[seg_0 == 1] = (0,255,0)
-            # anh[seg_0 == 2] = (0,0,255)
-            #
-            # anh = np.uint8(anh)
-            #
-            # cv2.imwrite('anh.jpg',anh)
-
         seg_loss = tversky_loss + 1 * focal_loss
-        # print("TVERSKY", tversky_loss)
-        # print("FOCAL", focal_loss)
-        # seg_loss *= 50
 
         return cls_loss, reg_loss, seg_loss, regression, classification, anchors, segmentation
 
