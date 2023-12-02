@@ -10,6 +10,7 @@ import onnxruntime
 import numpy as np
 import warnings
 from utils.constants import *
+from collections import OrderedDict
 
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
@@ -17,7 +18,7 @@ parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create anot
                                                         'https://github.com/rwightman/pytorch-image-models')
 parser.add_argument('-c', '--compound_coef', type=int, default=3, help='Coefficient of efficientnet backbone')
 parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
-parser.add_argument('--cuda', type=boolean_string, default=True)
+parser.add_argument('--cuda', type=bool, default=True)
 parser.add_argument('--width', type=int, default=640)
 parser.add_argument('--height', type=int, default=384)
 args = parser.parse_args()
@@ -47,7 +48,7 @@ model = HybridNetsBackbone(num_classes=len(params.obj_list),
                            seg_mode=seg_mode,
                            onnx_export=True)
 
-model.load_state_dict(torch.load(weight, map_location=device))
+model.load_state_dict(weight)
 model.eval()
 
 inputs = torch.randn(1, 3, args.height, args.width)
